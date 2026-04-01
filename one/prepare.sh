@@ -1,0 +1,42 @@
+#!/bin/zsh
+
+# Check root
+if [[ $(id -u) != 0 ]]; then
+    echo Must run as root
+    exit 1
+fi
+
+# Compile binaries
+gcc -o ./one ./one.c
+if [[ $? != 0 ]]; then
+    echo Compilation error: one
+    exit 1
+fi
+
+# Compile binaries
+gcc -o ./jail ./jail.c
+if [[ $? != 0 ]]; then
+    echo Compilation error: jail
+    exit 1
+fi
+
+# Install binaries to /Users/ctf
+mkdir /Users/ctf 2>/dev/null
+cp ./one /Users/ctf/
+cp ./jail /Users/ctf
+chown root:wheel /Users/ctf/one
+if [[ $? != 0 ]]; then
+    echo Error setting owner: one
+    exit 1
+fi
+chown root:wheel /Users/ctf/jail
+if [[ $? != 0 ]]; then
+    echo Error setting owner: jail
+    exit 1
+fi
+chmod +s /Users/ctf/jail
+if [[ $? != 0 ]]; then
+    echo Error setting SUID
+    exit 1
+fi
+
