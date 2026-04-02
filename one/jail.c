@@ -29,7 +29,18 @@ PROFILE[] =
     "(allow signal)\n"
 
     /* zsh needs to read its binary, dylibs, etc configs, zsh function paths */
-    "(allow file-read*)\n"
+    "(allow file-read*\n"
+    "    (subpath \"/usr/lib\")\n"
+    "    (subpath \"/System/Library\")\n"
+    "    (subpath \"/dev\")\n"
+    "    (literal \"/\")\n"
+    "    (literal \"/bin/zsh\")\n"
+    ")\n"
+
+    // Pgrp
+    "(allow file-ioctl\n"
+    "    (subpath \"/dev\")\n"
+    ")\n"
 
     /* Terminal I/O: /dev/tty, /dev/pts, /dev/null, /dev/zero */
     "(allow file-write* (regex #\"^/dev/\"))\n"
