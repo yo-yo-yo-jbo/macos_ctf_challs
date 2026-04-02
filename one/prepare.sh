@@ -1,5 +1,8 @@
 #!/bin/zsh
 
+# Flag (fine-tunable)
+FLAG='JBO{this_is_my_flag}'
+
 # Check for root
 if [[ $(id -u) != 0 ]]; then
     echo Must run as root
@@ -24,9 +27,11 @@ fi
 # Install binaries to /Users/ctf
 rm -f /Users/ctf/jail 2>/dev/null
 rm -f /Users/ctf/one 2>/dev/null
+rm -f /Users/ctf/flag 2>/dev/null
 mkdir /Users/ctf 2>/dev/null
 cp ./one /Users/ctf/
-cp ./jail /Users/ctf
+cp ./jail /Users/ctf/
+echo "$FLAG" > /Users/ctf/flag
 rm -f ./one
 rm -f ./jail
 chown root:wheel /Users/ctf/one
@@ -42,6 +47,16 @@ fi
 chmod +s /Users/ctf/jail
 if [[ $? != 0 ]]; then
     echo Error setting SUID
+    exit 1
+fi
+chown root:wheel /Users/ctf/flag
+if [[ $? != 0 ]]; then
+    echo Error setting owner: flag
+    exit 1
+fi
+chmod 0400 /Users/ctf/flag
+if [[ $? != 0 ]]; then
+    echo Error setting read only: flag
     exit 1
 fi
 
