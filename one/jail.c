@@ -51,7 +51,7 @@ int
 main(void)
 {
     char* err = NULL;
-    char* argv[] = { "/bin/zsh", NULL };
+    char* argv[] = { "/bin/zsh", "-f", NULL };
     char* envp[] = {
         "TERM=xterm-256color",
         "HOME=/Users/ctf",

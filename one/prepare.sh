@@ -21,6 +21,8 @@ if [[ $? != 0 ]]; then
 fi
 
 # Install binaries to /Users/ctf
+rm -f /Users/ctf/jail 2>/dev/null
+rm -f /Users/ctf/one 2>/dev/null
 mkdir /Users/ctf 2>/dev/null
 cp ./one /Users/ctf/
 cp ./jail /Users/ctf
