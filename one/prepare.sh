@@ -1,21 +1,22 @@
 #!/bin/zsh
 
-# Check root
+# Check for root
 if [[ $(id -u) != 0 ]]; then
     echo Must run as root
     exit 1
 fi
 
-# Compile binaries
+# Compile main challenge file
 gcc -o ./one ./one.c
 if [[ $? != 0 ]]; then
     echo Compilation error: one
     exit 1
 fi
 
-# Compile binaries
+# Compile jail
 gcc -o ./jail ./jail.c
 if [[ $? != 0 ]]; then
+    rm -f ./one
     echo Compilation error: jail
     exit 1
 fi
@@ -26,6 +27,8 @@ rm -f /Users/ctf/one 2>/dev/null
 mkdir /Users/ctf 2>/dev/null
 cp ./one /Users/ctf/
 cp ./jail /Users/ctf
+rm -f ./one
+rm -f ./jail
 chown root:wheel /Users/ctf/one
 if [[ $? != 0 ]]; then
     echo Error setting owner: one
