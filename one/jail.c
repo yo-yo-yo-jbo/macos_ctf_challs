@@ -2,6 +2,7 @@
 *                                                                                                           *
 *  File:       jail.c                                                                                       *
 *  Purpose:    Runs /bin/zsh interactively in a minimal jail.                                               *
+*  Remarks:    - Created by Jonathan Bar Or ("JBO"), https://jonathanbaror.com                .             *
 *                                                                                                           *
 ************************************************************************************************************/
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
