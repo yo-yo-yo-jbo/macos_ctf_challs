@@ -11,52 +11,50 @@ PROFILE[] =
     "(version 1)\n"
     "(deny default)\n"
 
-    /* Allow zsh to be exec'd */
+    // Self-execution
     "(allow process-exec\n"
     "    (literal \"/bin/zsh\")\n"
     ")\n"
 
-    /* Allow one to be exec'd without sandbox */
+    // The challenge can be run without a sandbox
     "(allow process-exec\n"
     "    (literal \"/Users/ctf/one\")\n"
     "    (with no-sandbox)\n"
     ")\n"
 
-    /* Forking is allowed (needed for pipelines, subshells, job control) */
+    // Forking is allowed
     "(allow process-fork)\n"
 
-    /* Signals */
+    // Signals are allowed
     "(allow signal)\n"
 
-    /* zsh needs to read its binary, dylibs, etc configs, zsh function paths */
+    // Reading own library and some devices
     "(allow file-read*\n"
-    "    (subpath \"/usr/lib\")\n"
-    "    (subpath \"/System/Library\")\n"
-    "    (subpath \"/dev\")\n"
+    "    (subpath \"/usr/lib/zsh\")\n"
+    "    (regex #\"^/dev/tty.*$\")\n"
+    "    (regex #\"^/dev/pty.*$\")\n"
+    "    (literal \"/dev/null\")\n"
     "    (literal \"/\")\n"
     "    (literal \"/bin/zsh\")\n"
     ")\n"
 
-    // Pgrp
+    // Performing terminal IOCTL calls
     "(allow file-ioctl\n"
-    "    (subpath \"/dev\")\n"
+    "    (regex #\"^/dev/tty.*$\")\n"
+    "    (regex #\"^/dev/pty.*$\")\n"
+    "    (literal \"/dev/null\")\n"
     ")\n"
 
-    /* Terminal I/O: /dev/tty, /dev/pts, /dev/null, /dev/zero */
-    "(allow file-write* (regex #\"^/dev/\"))\n"
-
-    /* Mach IPC - required by libSystem, dyld, launchd plumbing */
-    "(allow mach-lookup)\n"
-    "(allow mach-register)\n"
+    // Terminal I/O writes
+    "(allow file-write*\n"
+    "    (regex #\"^/dev/tty.*$\")\n"
+    "    (regex #\"^/dev/pty.*$\")\n"
+    "    (literal \"/dev/null\")\n"
+    ")\n"
 
     /* sysctl reads - dyld, stack-guard init */
     "(allow sysctl-read)\n"
-
-    /* IOKit - terminal driver queries */
-    "(allow iokit-open)\n"
-
-    /* socket() syscall for loopback mach plumbing */
-    "(allow system-socket)\n";
+;
 
 int
 main(void)
