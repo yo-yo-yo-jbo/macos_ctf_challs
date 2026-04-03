@@ -47,3 +47,16 @@ if [[ $? != 0 ]]; then
     exit 1
 fi
 
+# Create the extractor temporary directory
+mkdir /Users/ctf/extractor_tmp 2>/dev/null
+chown root:wheel /Users/ctf/extractor_tmp
+if [[ $? != 0 ]]; then
+    echo Error setting owner: extractor_tmp
+    exit 1
+fi
+chmod 0600 /Users/ctf/extractor_tmp
+if [[ $? != 0 ]]; then
+    echo Error setting read-write only: extractor_tmp
+    exit 1
+fi
+
