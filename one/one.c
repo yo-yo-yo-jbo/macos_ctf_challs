@@ -2,7 +2,7 @@
 *                                                                                                           *
 *  File:       one.c                                                                                        *
 *  Purpose:    The one challenge.                                                                           *
-*  Remarks:    - Created by Jonathan Bar Or ("JBO"), https://jonathanbaror.com                .             *
+*  Remarks:    - Created by Jonathan Bar Or ("JBO"), https://jonathanbaror.com                              *
 *                                                                                                           *
 ************************************************************************************************************/
 #include <errno.h>
