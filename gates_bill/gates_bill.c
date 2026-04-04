@@ -342,6 +342,51 @@ remove_entry(
 
 /************************************************************************************************************
 *                                                                                                           *
+*  Function:   quarantine_entry                                                                             *
+*  Purpose:    An nftw(3) callback that applies the quarantine extended attribute to a single entry.        *
+*  Parameters: - path     - entry path.                                                                     *
+*              - sb       - stat buffer (unused).                                                           *
+*              - typeflag - entry type flag (unused).                                                       *
+*              - ftwbuf   - walk buffer (unused).                                                           *
+*  Returns:    Always 0 to continue the walk.                                                               *
+*                                                                                                           *
+************************************************************************************************************/
+static
+int
+quarantine_entry(
+    const char* path,
+    const struct stat* sb,
+    int typeflag,
+    struct FTW* ftwbuf
+)
+{
+    // Unused arguments
+    (void)sb;
+    (void)typeflag;
+    (void)ftwbuf;
+
+    // Stamp entry; result is intentionally ignored
+    apply_quarantine_xattr(path);
+
+    // Indicate result
+    return 0;
+}
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   quarantine_volume_contents                                                                   *
+*  Purpose:    Walks MOUNT_POINT and applies the quarantine extended attribute to every entry.              *
+*                                                                                                           *
+************************************************************************************************************/
+static
+void
+quarantine_volume_contents(void)
+{
+    nftw(MOUNT_POINT, quarantine_entry, MAX_DEPTH, FTW_PHYS);
+}
+
+/************************************************************************************************************
+*                                                                                                           *
 *  Function:   ensure_single_instance                                                                       *
 *  Purpose:    Acquires an exclusive non-blocking advisory lock to prevent concurrent instances.            *
 *  Parameters: - lock_fd - receives the open lock file descriptor on success.                               *
@@ -561,9 +606,6 @@ extract_archive(
 
         // Finish current entry
         archive_write_finish_entry(ext);
-
-        // Stamp the extracted entry with Gatekeeper quarantine metadata
-        apply_quarantine_xattr(fullpath);
     }
 
     // Success
@@ -677,11 +719,14 @@ main(
     }
     volume_created = true;
 
-    // Extract the zip into the mounted volume, stamping each entry with quarantine metadata
+    // Extract the zip into the mounted volume
     if (!extract_archive(argv[1]))
     {
         goto cleanup;
     }
+
+    // Stamp every extracted entry with Gatekeeper quarantine metadata
+    quarantine_volume_contents();
 
     // Launch FlagReader.app
     if (!run_command(open_args))
