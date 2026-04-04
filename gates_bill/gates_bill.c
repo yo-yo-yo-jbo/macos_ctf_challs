@@ -567,13 +567,6 @@ extract_archive(
             goto cleanup;
         }
 
-        // Reject setuid and setgid bits
-        if (0 != (archive_entry_perm(entry) & (S_ISUID | S_ISGID)))
-        {
-            fprintf(stderr, "gates_bill: setuid/setgid entries are not permitted in the archive\n");
-            archive_read_data_skip(ar);
-            goto cleanup;
-        }
 
         // Prevent path traversal
         if (NULL != strstr(current, ".."))
