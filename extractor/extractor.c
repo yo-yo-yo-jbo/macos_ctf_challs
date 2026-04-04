@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <ftw.h>
 #include <unistd.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <stdint.h>
 
@@ -52,6 +53,14 @@
 
 /************************************************************************************************************
 *                                                                                                           *
+*  Constant:   LOCK_FILE_PATH                                                                               *
+*  Purpose:    Path to the advisory lock file used for single-instance enforcement.                         *
+*                                                                                                           *
+************************************************************************************************************/
+#define LOCK_FILE_PATH ("/var/run/extractor.lock")
+
+/************************************************************************************************************
+*                                                                                                           *
 *  Constant:   EXTRACTOR_TMP_PATH                                                                           *
 *  Purpose:    Base directory for extraction.                                                               *
 *                                                                                                           *
@@ -65,6 +74,56 @@
 *                                                                                                           *
 ************************************************************************************************************/
 #define SYSTEM_FLAG_PATH ("/Users/ctf/flag")
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   ensure_single_instance                                                                       *
+*  Purpose:    Acquires an exclusive non-blocking advisory lock to prevent concurrent instances.            *
+*  Parameters: - lock_fd - receives the open lock file descriptor on success.                               *
+*  Returns:    True upon success, false otherwise.                                                          *
+*                                                                                                           *
+************************************************************************************************************/
+static
+bool
+ensure_single_instance(
+    int* lock_fd
+)
+{
+    bool ok = false;
+    int lock_fd_tmp = -1;
+
+    // Open or create the lock file
+    lock_fd_tmp = open(LOCK_FILE_PATH, O_CLOEXEC | O_RDWR | O_CREAT, 0600);
+    if (-1 == lock_fd_tmp)
+    {
+        fprintf(stderr, "extractor: failed to open lock file\n");
+        goto cleanup;
+    }
+
+    // Attempt a non-blocking exclusive lock
+    if (-1 == flock(lock_fd_tmp, LOCK_EX | LOCK_NB))
+    {
+        fprintf(stderr, "extractor: another instance is already running\n");
+        goto cleanup;
+    }
+
+    // Success
+    *lock_fd = lock_fd_tmp;
+    lock_fd_tmp = -1;
+    ok = true;
+
+cleanup:
+
+    // Free resources
+    if (-1 != lock_fd_tmp)
+    {
+        close(lock_fd_tmp);
+        lock_fd_tmp = -1;
+    }
+
+    // Indicate result
+    return ok;
+}
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -482,6 +541,7 @@ main(
 {
     bool ok = false;
     bool dest_created = false;
+    int lock_fd = -1;
     const char* filepath = NULL;
     const char* last_slash = NULL;
     const char* base = NULL;
@@ -495,6 +555,12 @@ main(
         goto cleanup;
     }
     filepath = argv[1];
+
+    // Ensure only one instance runs at a time
+    if (!ensure_single_instance(&lock_fd))
+    {
+        goto cleanup;
+    }
 
     // Derive basename without modifying the argument
     last_slash = strrchr(filepath, '/');
@@ -546,6 +612,14 @@ cleanup:
     if (dest_created)
     {
         remove_dest_dir(dest);
+    }
+
+    // Release the single-instance lock
+    if (-1 != lock_fd)
+    {
+        flock(lock_fd, LOCK_UN);
+        close(lock_fd);
+        lock_fd = -1;
     }
 
     // Indicate result
