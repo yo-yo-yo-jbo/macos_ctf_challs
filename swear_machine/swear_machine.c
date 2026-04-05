@@ -12,7 +12,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <time.h>
+#include <sys/mman.h>
 #include <ncurses.h>
 
 /************************************************************************************************************
@@ -30,6 +32,22 @@
 *                                                                                                           *
 ************************************************************************************************************/
 #define FLAG_MAX_LEN (256)
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Constant:   FLAG_BASE_ADDR                                                                               *
+*  Purpose:    Fixed virtual base address at which the flag buffer is mapped.                               *
+*                                                                                                           *
+************************************************************************************************************/
+#define FLAG_BASE_ADDR ((void*)0x200000000ULL)
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Constant:   FLAG_MAP_LEN                                                                                 *
+*  Purpose:    Total size of the flag mapping: slots times bytes.                                           *
+*                                                                                                           *
+************************************************************************************************************/
+#define FLAG_MAP_LEN (256 * 256)
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -54,6 +72,7 @@
 *                                                                                                           *
 ************************************************************************************************************/
 #define MAX_WINDOWS (20)
+
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -178,18 +197,32 @@ main(void)
 {
     bool ok = false;
     int flag_fd = -1;
-    char flag[FLAG_MAX_LEN] = { 0 };
+    void* flag_map = MAP_FAILED;
+    char* flag = NULL;
+    uint8_t rand_offset = 0;
     WINDOW* windows[MAX_WINDOWS] = { NULL };
     int window_count = 0;
     int ch = 0;
     const char* swear = NULL;
     size_t counter = 0;
 
-    // Read the flag into memory before anything else
+    // Map the entire flag arena at a fixed known base address (256 slots * 256 bytes)
+    flag_map = mmap(FLAG_BASE_ADDR, FLAG_MAP_LEN, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+    if ((MAP_FAILED == flag_map) || (flag_map != FLAG_BASE_ADDR))
+    {
+        fprintf(stderr, "swear_machine: mmap failed: %d\n", errno);
+        goto cleanup;
+    }
+
+    // Pick a random slot within the arena
+    arc4random_buf(&rand_offset, sizeof(rand_offset));
+    flag = (char*)FLAG_BASE_ADDR + ((size_t)rand_offset * FLAG_MAX_LEN);
+
+    // Read the flag into the chosen slot
     flag_fd = open(FLAG_PATH, O_RDONLY | O_CLOEXEC);
     if (-1 == flag_fd)
     {
-        fprintf(stderr, "swear_machine: failed to open flag: %s\n", strerror(errno));
+        fprintf(stderr, "swear_machine: failed to open flag: %d\n", errno);
         goto cleanup;
     }
     read(flag_fd, flag, FLAG_MAX_LEN - 1);
@@ -262,9 +295,16 @@ cleanup:
         close(flag_fd);
         flag_fd = -1;
     }
-
-    // Scrub flag from memory
-    memset(flag, 0, sizeof(flag));
+    if (MAP_FAILED != flag_map)
+    {
+        if (NULL != flag)
+        {
+            memset(flag, 0, FLAG_MAX_LEN);
+            flag = NULL;
+        }
+        munmap(flag_map, FLAG_MAP_LEN);
+        flag_map = MAP_FAILED;
+    }
 
     // Indicate result
     return ok ? 0 : 1;
