@@ -32,67 +32,31 @@
 
 /************************************************************************************************************
 *                                                                                                           *
-*  Global:     environ                                                                                      *
-*  Purpose:    Contains the environment variables for this program.                                         *
-*                                                                                                           *
-************************************************************************************************************/
-extern char** environ;
-
-/************************************************************************************************************
-*                                                                                                           *
 *  Function:   drop_env                                                                                     *
 *  Purpose:    Drops all environment variables besides PATH.                                                *
-*  Returns:    True in case of success, false in case of a failure.                                         *
+*  Parameters: - envp - the current environment variables pointer.                                          *
 *                                                                                                           *
 ************************************************************************************************************/
 static
-bool
-drop_env(void)
+void
+drop_env(
+    char** envp
+)
 {
-    bool ok = false;
-    static char* empty_env[] = { NULL };
-    char* path_val = NULL;
-    char* path_saved = NULL;
+    size_t index = 0;
 
-    // Get the path value and duplicate it
-    path_val = getenv("PATH");
-    if (NULL != path_val)
+    // Clean all environment variables besides PATH
+    for (index = 0; NULL != envp[index]; index++)
     {
-        path_saved = strdup(path_val);
-        if (NULL == path_saved)
+        if ((0 == strncmp("PATH=", envp[index], 5)) && (0 < index))
         {
-            fprintf(stderr, "checker: memory error\n");
-            goto cleanup;
+            envp[0] = envp[index];
+        }
+        else
+        {
+            envp[index] = NULL;
         }
     }
-
-    // Clean all environment variables
-    environ = empty_env;
-
-    // Set the PATH
-    if (NULL != path_saved)
-    {
-        if (0 != setenv("PATH", path_saved, 1))
-        {
-            fprintf(stderr, "checker: error setting PATH\n");
-            goto cleanup;
-        }
-    }
-
-    // Success
-    ok = true;
-
-cleanup:
-
-    // Free resources
-    if (NULL != path_saved)
-    {
-        free(path_saved);
-        path_saved = NULL;
-    }
-
-    // Indicate result
-    return ok;
 }
 
 /************************************************************************************************************
@@ -226,7 +190,7 @@ cleanup:
 *  Function:   find_in_path                                                                                 *
 *  Purpose:    Finds a relative path in PATH.                                                               *
 *  Parameters: - relative - the relative path.                                                              *
-*              - absolute - gets the absolute path in the case of success.                                  *
+*              - path - gets the final path in the case of success.                                         *
 *  Returns:    True in case of success, false in case of a failure.                                         *
 *  Remarks:    - Free the returned absolute path with free.                                                 *
 *                                                                                                           *
@@ -235,7 +199,7 @@ static
 bool
 find_in_path(
     char* relative,
-    char** absolute
+    char** path
 )
 {
     bool ok = false;
@@ -246,7 +210,6 @@ find_in_path(
     char* full_path = NULL;
     size_t token_len = 0;
     int fd = -1;
-    bool free_token = false;
 
     // Calculate the relative path length
     relative_len = strlen(relative);
@@ -269,7 +232,7 @@ find_in_path(
 
     // Tokenize
     token = strtok(path_env_dup, ":");
-    for (;;)
+    while (NULL != token)
     {
         // Calculate sizes
         token_len = strlen(token);
@@ -285,7 +248,7 @@ find_in_path(
         // Build the full path
         if (token_len + relative_len + 1 != snprintf(full_path, token_len + relative_len + 2, "%s/%s", token, relative))
         {
-            fprintf(stderr, "checker: error building absolute path\n");
+            fprintf(stderr, "checker: error building full path\n");
             goto cleanup;
         }
 
@@ -294,6 +257,7 @@ find_in_path(
         if (-1 != fd)
         {
             close(fd);
+            fd = -1;
             break;
         }
 
@@ -301,25 +265,24 @@ find_in_path(
         free(full_path);
         full_path = NULL;
 
-        // Break-out if we've tried the currently working directory
-        if (free_token)
-        {
-            break;
-        }
-
         // Move on to next token
         token = strtok(NULL, ":");
+    }
 
-        // If token is NULL then we finished - try the currently working directory instead
-        if (NULL == token)
+    // Try to find in current working directory
+    if (NULL == full_path)
+    {
+        fd = open(relative, O_RDONLY);
+        if (-1 != fd)
         {
-            token = getcwd(NULL, 0);
-            if (NULL == token)
+            close(fd);
+            fd = -1;
+            full_path = strdup(relative);
+            if (NULL == full_path)
             {
-                fprintf(stderr, "checker: cannot get current working directory\n");
+                fprintf(stderr, "checker: memory error\n");
                 goto cleanup;
             }
-            free_token = true;
         }
     }
 
@@ -331,18 +294,13 @@ find_in_path(
     }
 
     // Success
-    *absolute = full_path;
+    *path = full_path;
     full_path = NULL;
     ok = true;
 
 cleanup:
 
     // Free resources
-    if ((free_token) && (NULL != token))
-    {
-        free(token);
-        token = NULL;
-    }
     if (NULL != full_path)
     {
         free(full_path);
@@ -368,7 +326,8 @@ cleanup:
 int
 main(
     int argc,
-    char** argv
+    char** argv,
+    char** envp
 )
 {
     bool ok = false;
@@ -377,9 +336,16 @@ main(
     char* path = NULL;
     bool flag_match = false;
 
-    // Drop all environment variables besides PATH
-    if (!drop_env())
+    // Make sure we run as true root
+    if (getuid() != geteuid())
     {
+        if (0 != setuid(geteuid()))
+        {
+            fprintf(stderr, "Setting RUID failed\n");
+            goto cleanup;
+        }
+        execve("/Users/ctf/checker", argv, envp);
+        fprintf(stderr, "Self-execution failed\n");
         goto cleanup;
     }
 
@@ -419,7 +385,6 @@ main(
         {
             goto cleanup;
         }
-        argv[index] = path; 
     }
     else
     {
@@ -431,15 +396,12 @@ main(
         }
     }
 
-    // TODO
-    {
-        printf("DBG SQLITE_AUTO_TRACE: %s\n", getenv("SQLITE_AUTO_TRACE"));
-        printf("DBG PATH: %s\n", getenv("PATH"));
-        printf("DBG argv[index]: %s\n", argv[index]);
-    }
+    // Drop all environment variables besides PATH
+    drop_env(envp);
 
     // Check the flag 
-    if (!check_flag(path, &flag_match))
+    argv[index] = path;
+    if (!check_flag(argv[index], &flag_match))
     {
         goto cleanup;
     }
