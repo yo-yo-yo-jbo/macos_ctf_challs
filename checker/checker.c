@@ -116,12 +116,10 @@ check_flag(
     char candidate[MAX_FLAG_SIZE + 1] = {0};
     ssize_t bytes_read = 0;
     sqlite3* db = NULL;
-    sqlite3_stmt* stmt = NULL;
+    sqlite3_stmt* fetch_stmt = NULL;
+    sqlite3_stmt* cmp_stmt = NULL;
     const char* flag = NULL;
-    size_t flag_len = 0;
-    size_t candidate_len = 0;
-    uint8_t diff = 0;
-    size_t i = 0;
+    int step_result = 0;
 
     // Open and read the candidate file
     fd = open(path, O_RDONLY);
@@ -137,39 +135,61 @@ check_flag(
         goto cleanup;
     }
 
-    // Open the flag SQLite DB and read the flag value
+    // Open the flag SQLite DB
     if (SQLITE_OK != sqlite3_open_v2(FLAG_PATH, &db, SQLITE_OPEN_READONLY, NULL))
     {
         fprintf(stderr, "checker: cannot open flag DB\n");
         goto cleanup;
     }
-    if (SQLITE_OK != sqlite3_prepare_v2(db, "SELECT flag FROM secret LIMIT 1", -1, &stmt, NULL))
+
+    // Fetch the flag value
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "SELECT flag FROM secret LIMIT 1", -1, &fetch_stmt, NULL))
     {
-        fprintf(stderr, "checker: cannot prepare query\n");
+        fprintf(stderr, "checker: cannot prepare fetch query\n");
         goto cleanup;
     }
-    if (SQLITE_ROW != sqlite3_step(stmt))
+    if (SQLITE_ROW != sqlite3_step(fetch_stmt))
     {
         fprintf(stderr, "checker: no flag row\n");
         goto cleanup;
     }
-    flag = (const char*)sqlite3_column_text(stmt, 0);
+    flag = (const char*)sqlite3_column_text(fetch_stmt, 0);
     if (NULL == flag)
     {
         fprintf(stderr, "checker: null flag\n");
         goto cleanup;
     }
 
-    // Safe (constant-time) XOR comparison
-    flag_len = strlen(flag);
-    candidate_len = strlen(candidate);
-    diff = (flag_len != candidate_len) ? 1 : 0;
-    for (i = 0; i < flag_len && i < candidate_len; i++)
+    // Compare flag and candidate via bound parameters - prevents SQL injection
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "SELECT 1 WHERE ? = ?", -1, &cmp_stmt, NULL))
     {
-        diff |= (uint8_t)((unsigned char)flag[i] ^ (unsigned char)candidate[i]);
+        fprintf(stderr, "checker: cannot prepare comparison query\n");
+        goto cleanup;
     }
-    *is_match = (0 == diff);
-
+    if (SQLITE_OK != sqlite3_bind_text(cmp_stmt, 1, flag, -1, SQLITE_STATIC))
+    {
+        fprintf(stderr, "checker: cannot bind flag\n");
+        goto cleanup;
+    }
+    if (SQLITE_OK != sqlite3_bind_text(cmp_stmt, 2, candidate, -1, SQLITE_STATIC))
+    {
+        fprintf(stderr, "checker: cannot bind candidate\n");
+        goto cleanup;
+    }
+    step_result = sqlite3_step(cmp_stmt);
+    switch (step_result)
+    {
+        case SQLITE_ROW:
+            *is_match = (1 == sqlite3_column_int(cmp_stmt, 0));
+            break;
+        case SQLITE_DONE:
+            *is_match = false;
+            break;
+        default:
+            fprintf(stderr, "checker: comparison query failed\n");
+            goto cleanup;
+    }
+    
     // Success
     ok = true;
 
@@ -181,10 +201,15 @@ cleanup:
         close(fd);
         fd = -1;
     }
-    if (NULL != stmt)
+    if (NULL != cmp_stmt)
     {
-        sqlite3_finalize(stmt);
-        stmt = NULL;
+        sqlite3_finalize(cmp_stmt);
+        cmp_stmt = NULL;
+    }
+    if (NULL != fetch_stmt)
+    {
+        sqlite3_finalize(fetch_stmt);
+        fetch_stmt = NULL;
     }
     if (NULL != db)
     {
