@@ -246,6 +246,7 @@ find_in_path(
     char* full_path = NULL;
     size_t token_len = 0;
     int fd = -1;
+    bool free_token = false;
 
     // Calculate the relative path length
     relative_len = strlen(relative);
@@ -268,7 +269,7 @@ find_in_path(
 
     // Tokenize
     token = strtok(path_env_dup, ":");
-    while (NULL != token)
+    for (;;)
     {
         // Calculate sizes
         token_len = strlen(token);
@@ -300,8 +301,26 @@ find_in_path(
         free(full_path);
         full_path = NULL;
 
+        // Break-out if we've tried the currently working directory
+        if (free_token)
+        {
+            break;
+        }
+
         // Move on to next token
         token = strtok(NULL, ":");
+
+        // If token is NULL then we finished - try the currently working directory instead
+        if (NULL == token)
+        {
+            token = getcwd(NULL, 0);
+            if (NULL == token)
+            {
+                fprintf(stderr, "checker: cannot get current working directory\n");
+                goto cleanup;
+            }
+            free_token = true;
+        }
     }
 
     // Fail if not found
@@ -319,6 +338,11 @@ find_in_path(
 cleanup:
 
     // Free resources
+    if ((free_token) && (NULL != token))
+    {
+        free(token);
+        token = NULL;
+    }
     if (NULL != full_path)
     {
         free(full_path);
@@ -395,7 +419,7 @@ main(
         {
             goto cleanup;
         }
-        argv[index] = path;   
+        argv[index] = path; 
     }
     else
     {
@@ -405,6 +429,13 @@ main(
             fprintf(stderr, "checker: memory error\n");
             goto cleanup;
         }
+    }
+
+    // TODO
+    {
+        printf("DBG SQLITE_AUTO_TRACE: %s\n", getenv("SQLITE_AUTO_TRACE"));
+        printf("DBG PATH: %s\n", getenv("PATH"));
+        printf("DBG argv[index]: %s\n", argv[index]);
     }
 
     // Check the flag 
