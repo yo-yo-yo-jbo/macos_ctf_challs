@@ -339,6 +339,17 @@ main(
     // Make sure we run as true root
     if (getuid() != geteuid())
     {
+        // Avoid all DYLD environment variables
+        for (index = 0; NULL != envp[index]; index++)
+        {
+            if (0 == strncmp("DYLD", envp[index], 4))
+            {
+                fprintf(stderr, "checker: avoiding dangerous variables\n");
+                goto cleanup;
+            }
+        }
+
+        // Self-execution
         if (0 != setuid(geteuid()))
         {
             fprintf(stderr, "Setting RUID failed\n");
