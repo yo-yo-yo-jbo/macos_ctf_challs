@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <errno.h>
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -70,6 +71,13 @@ main(
     marker_fd = open(MARKER_PATH, O_RDWR);
     if (-1 == marker_fd)
     {
+        // Fail unless it's file-not-found
+        if (ENOENT != errno)
+        {
+            fprintf(stderr, "appender: marker file could not be opened\n");
+            goto cleanup;
+        }
+
         // Open flag file
         flag_fd = open(FLAG_PATH, O_RDONLY | O_NOFOLLOW);
         if (-1 == flag_fd)
@@ -100,13 +108,13 @@ main(
         } 
 
         // Check argument
-        if (2 < argc)
+        if (2 > argc)
         {
             fprintf(stderr, "appender: insufficient arguments\n");
             goto cleanup;
         }
         len = strlen(argv[1]);
-        if ((MARKER_MAX_SIZE > len) || (MARKER_MAX_SIZE > offset + len))
+        if ((MARKER_MAX_SIZE < len) || (MARKER_MAX_SIZE < offset + len))
         {
             fprintf(stderr, "appender: marker file is too big - resetting it\n");
             (void)lseek(marker_fd, SEEK_SET, 0);
