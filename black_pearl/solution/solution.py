@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+#
+#  Solution
+#  --------
+#  1. The SUID binary takes the USER environment variable and uses pututxline() to write it to UTMPX
+#  2. Since USER is not sanitized - we have the ability to write an arbitrary entry to UTMPX
+#  3. The "who" utility reads the UTMPX entry by entry and for each entry
+#  4. For each entry it looks for "console" - if found - it will take everything before the first space
+#  5. The chomped entry is used as such: "/usr/bin/id -u $user"
+#  6. Therefore - we can introduce a command injection - the only issue is that we have to do it without spaces
+#
 from pwn import *
 import os
 import base64

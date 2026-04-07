@@ -2,6 +2,7 @@
 *                                                                                                           *
 *  File:       black_pearl.c                                                                                *
 *  Purpose:    The Black Pearl challenge.                                                                   *
+*  Remarks:    - Created by Jonathan Bar Or ("JBO"), https://jonathanbaror.com                              *
 *                                                                                                           *
 ************************************************************************************************************/
 #include <stdio.h>
