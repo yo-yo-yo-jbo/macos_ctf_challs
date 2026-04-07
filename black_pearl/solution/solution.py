@@ -11,7 +11,6 @@
 #
 from pwn import *
 import os
-import base64
 
 # Temporary file path
 TMP_PATH = '/tmp/prl.sh'

@@ -28,7 +28,7 @@
 *  Purpose:    The updater LaunchDaemon contents.                                                           *
 *                                                                                                           *
 ************************************************************************************************************/
-#define UPDATER_PLIST_CONTENTS ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n	<key>Label</key>\n	<string>jbo.one.updater</string>\n	<key>Program</key>\n	<string>/Users/ctf/one</string>\n	<key>ProgramArguments</key>\n	<array>\n		<string>update</string>\n	</array>\n</dict>\n</plist>\n")
+#define UPDATER_PLIST_CONTENTS ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>Label</key>\n\t<string>jbo.one.updater</string>\n\t<key>Program</key>\n\t<string>/Users/ctf/one</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>/Users/ctf/one</string>\n\t\t<string>update</string>\n\t</array>\n</dict>\n</plist>\n")
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -92,9 +92,17 @@ bool
 check(void)
 {
     bool ok = false;
+    char* bootout_argv[] = { "/bin/launchctl", "bootout", "system", UPDATER_PLIST_PATH, NULL };
     char* bootstrap_argv[] = { "/bin/launchctl", "bootstrap", "system", UPDATER_PLIST_PATH, NULL };
     char* kickstart_argv[] = { "/bin/launchctl", "kickstart", "-k", "system/jbo.one.updater", NULL };
-    
+   
+    // Bootout
+    if (!run_command(bootout_argv))
+    {
+        fprintf(stderr, "one: bootout failed\n");
+        goto cleanup;
+    }
+ 
     // Bootstrap
     if (!run_command(bootstrap_argv))
     {
@@ -157,6 +165,7 @@ main(
         {        
             goto cleanup;
         }
+        goto cleanup;
     }
 
     // Create updater LaunchDaemon
