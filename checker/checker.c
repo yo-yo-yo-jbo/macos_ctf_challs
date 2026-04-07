@@ -320,6 +320,9 @@ cleanup:
 *                                                                                                           *
 *  Function:   main                                                                                         *
 *  Purpose:    Main routine. Runs the checker challenge.                                                    *
+*  Parameters: - argc - the number of commandline arguments.                                                *
+*              - argv - the commandline arguments.                                                          *
+*              - envp - the environment variables.                                                          *
 *  Returns:    Zero in case of success or non-zero in case of a failure.                                    *
 *                                                                                                           *
 ************************************************************************************************************/
