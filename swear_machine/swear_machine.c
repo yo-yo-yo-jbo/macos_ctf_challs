@@ -40,7 +40,7 @@
 *  Purpose:    Fixed virtual base address for the title mapping (above 4 GB).                               *
 *                                                                                                           *
 ************************************************************************************************************/
-#define TITLE_BASE_ADDR ((void *)0x200001000ULL)
+#define TITLE_BASE_ADDR ((void *)0x200004000ULL)
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -153,6 +153,7 @@ draw_swear_window(
     row = 1;
 
     // Print the swear and fit to the length
+    swear_ptr = swear;
     while (('\0' != *swear_ptr) && (row <= inner_rows))
     {
         // Find how many characters fit on this row
@@ -229,12 +230,13 @@ swear_choice(
                 flag_fd = open(FLAG_PATH, O_RDONLY | O_CLOEXEC);
                 if (-1 != flag_fd)
                 {
-                    if (0 != fstat(flag_fd, &flag_stat))
+                    if (0 == fstat(flag_fd, &flag_stat))
                     {
                         swear = malloc(flag_stat.st_size + 1);
                         if (NULL != swear)
                         {
                             (void)read(flag_fd, swear, flag_stat.st_size);
+                            *should_free = true;
                         }
                     }
                 }
@@ -246,6 +248,7 @@ swear_choice(
     if (NULL == swear)
     {
         swear = (char*)(g_swears[rand() % SWEAR_COUNT]);
+        *should_free = false;
     }
 
     // Free resources
