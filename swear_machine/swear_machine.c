@@ -5,50 +5,16 @@
 *  Remarks:    - Created by Jonathan Bar Or ("JBO"), https://jonathanbaror.com                              *
 *                                                                                                           *
 ************************************************************************************************************/
-#include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <time.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <ncurses.h>
-
-/************************************************************************************************************
-*                                                                                                           *
-*  Constant:   FLAG_PATH                                                                                    *
-*  Purpose:    Path to the flag file.                                                                       *
-*                                                                                                           *
-************************************************************************************************************/
-#define FLAG_PATH ("/Users/ctf/flag")
-
-/************************************************************************************************************
-*                                                                                                           *
-*  Constant:   TITLE                                                                                        *
-*  Purpose:    Title string.                                                                                *
-*                                                                                                           *
-************************************************************************************************************/
-#define TITLE ("SWEAR MACHINE")
-
-/************************************************************************************************************
-*                                                                                                           *
-*  Constant:   TITLE_BASE_ADDR                                                                              *
-*  Purpose:    Fixed virtual base address for the title mapping (above 4 GB).                               *
-*                                                                                                           *
-************************************************************************************************************/
-#define TITLE_BASE_ADDR ((void *)0x200004000ULL)
-
-/************************************************************************************************************
-*                                                                                                           *
-*  Constant:   TITLE_MAP_LEN                                                                                *
-*  Purpose:    Size of the title mapping (one page).                                                        *
-*                                                                                                           *
-************************************************************************************************************/
-#define TITLE_MAP_LEN (4096)
+#include <termios.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -106,65 +72,139 @@ g_swears[] =
 
 /************************************************************************************************************
 *                                                                                                           *
-*  Function:   draw_swear_window                                                                            *
-*  Purpose:    Draws a new ncurses popup window with a random swear.                                        *
-*  Parameters: - swear - the swear string to display.                                                       *
-*  Returns:    A pointer to the new window, or NULL on failure.                                             *
+*  Constant:   DEFAULT_ROWS                                                                                 *
+*  Purpose:    The default number of rows in a terminal.                                                    *
+*                                                                                                           *
+************************************************************************************************************/
+#define DEFAULT_ROWS (24)
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Constant:   DEFAULT_COLS                                                                                 *
+*  Purpose:    The default number of columns in a terminal.                                                 *
+*                                                                                                           *
+************************************************************************************************************/
+#define DEFAULT_COLS (80)
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   term_size                                                                                    *
+*  Purpose:    Returns the current terminal dimensions.                                                     *
+*  Parameters: - rows - receives the number of rows.                                                        *
+*              - cols - receives the number of columns.                                                     *
 *                                                                                                           *
 ************************************************************************************************************/
 static
-WINDOW*
-draw_swear_window(
-    const char* swear
+void
+term_size(
+    int* rows,
+    int* cols
 )
 {
-    int max_y = 0;
-    int max_x = 0;
-    int start_y = 0;
-    int start_x = 0;
-    WINDOW* win = NULL;
-    int inner_w = 0;
-    int inner_rows = 0;
+    struct winsize ws = { 0 };
+
+    // Fetch via IOCTL or get the default size
+    if (0 == ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws))
+    {
+        *rows = (int)ws.ws_row;
+        *cols = (int)ws.ws_col;
+    }
+    else
+    {
+        *rows = DEFAULT_ROWS;
+        *cols = DEFAULT_COLS;
+    }
+}
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   term_raw                                                                                     *
+*  Purpose:    Puts the terminal into raw mode, saving the prior settings.                                  *
+*  Parameters: - saved - receives the prior terminal settings.                                              *
+*                                                                                                           *
+************************************************************************************************************/
+static
+void
+term_raw(
+    struct termios* saved
+)
+{
+    struct termios raw = { 0 };
+
+    tcgetattr(STDIN_FILENO, saved);
+    raw = *saved;
+    raw.c_lflag &= ~ (unsigned long)(ECHO | ICANON);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   term_restore                                                                                 *
+*  Purpose:    Restores terminal settings previously saved by term_raw.                                     *
+*  Parameters: - saved - the terminal settings to restore.                                                  *
+*                                                                                                           *
+************************************************************************************************************/
+static
+void
+term_restore(
+    const struct termios* saved
+)
+{
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, saved);
+}
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   draw_swear_window                                                                            *
+*  Purpose:    Draws a popup window with a swear at the given terminal position.                            *
+*  Parameters: - swear     - the swear string to display.                                                   *
+*              - start_row - top row of the window (1-based).                                               *
+*              - start_col - left column of the window (1-based).                                           *
+*                                                                                                           *
+************************************************************************************************************/
+static
+void
+draw_swear_window(
+    const char* swear,
+    int         start_row,
+    int         start_col
+)
+{
+    int c = 0;
     int row = 0;
-    const char* swear_ptr = NULL;
     int len = 0;
     int fit = 0;
     int brk = 0;
+    const char* p = NULL;
+    const int inner_w = SWEAR_WIN_WIDTH - 2;
+    const int inner_rows = SWEAR_WIN_HEIGHT - 2;
 
-    // Pick a random position that fits on screen
-    getmaxyx(stdscr, max_y, max_x);
-    start_y = rand() % (max_y - SWEAR_WIN_HEIGHT);
-    start_x = rand() % (max_x - SWEAR_WIN_WIDTH);
-
-    // Create and draw the window
-    win = newwin(SWEAR_WIN_HEIGHT, SWEAR_WIN_WIDTH, start_y, start_x);
-    if (NULL == win)
+    // Top border
+    printf("\033[%d;%dH\u250c", start_row, start_col);
+    for (c = 0; c < inner_w; c++)
     {
-        goto cleanup;
+        printf("\u2500");
+    }
+    printf("\u2510");
+
+    // Inner rows: side borders with blank fill
+    for (row = 1; row < SWEAR_WIN_HEIGHT - 1; row++)
+    {
+        printf("\033[%d;%dH\u2502%-*s\u2502", start_row + row, start_col, inner_w, "");
     }
 
-    // Draw
-    box(win, 0, 0);
-
-    // Word-wrap the swear across interior rows (rows 1 .. SWEAR_WIN_HEIGHT-2)
-    
-    inner_w = SWEAR_WIN_WIDTH - 2;
-    inner_rows = SWEAR_WIN_HEIGHT - 2;
-    row = 1;
-
-    // Print the swear and fit to the length
-    swear_ptr = swear;
-    while (('\0' != *swear_ptr) && (row <= inner_rows))
+    // Word-wrap swear text into inner rows
+    p = swear;
+    for (row = 1; (row <= inner_rows) && ('\0' != *p); row++)
     {
-        // Find how many characters fit on this row
-        len = (int)strlen(swear_ptr);
-        fit = len < inner_w ? len : inner_w;
-
-        // If text doesn't fit fully - break at last space
+        len = (int)strlen(p);
+        fit = (len < inner_w) ? len : inner_w;
         if (len > inner_w)
         {
             brk = fit;
-            while ((0 < brk) && (' ' != swear_ptr[brk]))
+            while ((0 < brk) && (' ' != p[brk]))
             {
                 brk--;
             }
@@ -173,215 +213,112 @@ draw_swear_window(
                 fit = brk;
             }
         }
-
-        mvwprintw(win, row, 1, "%.*s", fit, swear_ptr);
-        swear_ptr += fit;
-
-        // Skip a single space at word-break boundary
-        if (*swear_ptr == ' ')
+        printf("\033[%d;%dH%.*s", start_row + row, start_col + 1, fit, p);
+        p += fit;
+        if (' ' == *p)
         {
-            swear_ptr++;
-        }
-
-        // Move to the next row
-        row++;
-    }
-
-    // Refresh
-    wrefresh(win);
-
-cleanup:
-
-    // Return the window
-    return win;
-}
-
-/************************************************************************************************************
-*                                                                                                           *
-*  Function:   swear_choice                                                                                 *
-*  Purpose:    Chooses a swear.                                                                             *
-*  Parameters: - should_free - indicates whether the returned choice was allocated.                         *
-*  Returns:    The newly chosen swear.                                                                      * 
-*                                                                                                           *
-************************************************************************************************************/
-static
-char*
-swear_choice(
-     bool* should_free
-)
-{
-    char* swear = NULL;
-    char* plab_cap = NULL;
-    char* plab_out = NULL;
-    int parsed = 0;
-    int flag_fd = -1;
-    struct stat flag_stat = { 0 };
-
-    // Get the capability and perform the check
-    plab_cap = tigetstr("plab_norm");
-    if ((NULL != plab_cap) && ((char *)-1 != plab_cap))
-    {
-        plab_out = tparm(plab_cap, 1, (long)(uintptr_t)TITLE_BASE_ADDR);
-        if (NULL != plab_out)
-        {
-            parsed = (int)strtol(plab_out, NULL, 10);
-            if ((int)(uintptr_t)TITLE_BASE_ADDR == parsed)
-            {
-                flag_fd = open(FLAG_PATH, O_RDONLY | O_CLOEXEC);
-                if (-1 != flag_fd)
-                {
-                    if (0 == fstat(flag_fd, &flag_stat))
-                    {
-                        swear = malloc(flag_stat.st_size + 1);
-                        if (NULL != swear)
-                        {
-                            (void)read(flag_fd, swear, flag_stat.st_size);
-                            *should_free = true;
-                        }
-                    }
-                }
-            }
+            p++;
         }
     }
 
-    // Pick a random swear
-    if (NULL == swear)
+    // Bottom border
+    printf("\033[%d;%dH\u2514", start_row + SWEAR_WIN_HEIGHT - 1, start_col);
+    for (c = 0; c < inner_w; c++)
     {
-        swear = (char*)(g_swears[rand() % SWEAR_COUNT]);
-        *should_free = false;
+        printf("\u2500");
     }
-
-    // Free resources
-    if (-1 != flag_fd)
-    {
-        close(flag_fd);
-        flag_fd = -1;
-    }
-
-    // Return the choice
-    return swear;
+    printf("\u2518");
+    fflush(stdout);
 }
 
 /************************************************************************************************************
 *                                                                                                           *
 *  Function:   main                                                                                         *
 *  Purpose:    Main routine. The swear machine binary.                                                      *
-*  Returns:    Non-zero in case of failure, zero in case of success.                                        *
+*  Returns:    Zero upon success, non-zero upon failure..                                                   *
 *                                                                                                           *
 ************************************************************************************************************/
 int
 main(void)
 {
     bool ok = false;
-    void* title_map = MAP_FAILED;
-    WINDOW* windows[MAX_WINDOWS] = { NULL };
+    char* reset_args[] = { "/usr/bin/tput", "reset", NULL };
+    pid_t pid = -1;
+    struct termios saved_term = { 0 };
+    int rows = 0;
+    int cols = 0;
     int window_count = 0;
-    int ch = 0;
-    size_t counter = 0;
-    char* plab_cap = NULL;
-    char* plab_out = NULL;
-    bool should_free = false;
-    char* swear = NULL;
+    unsigned char ch = 0;
+    int start_row = 0;
+    int start_col = 0;
 
-    // Map the title
-    title_map = mmap(TITLE_BASE_ADDR, TITLE_MAP_LEN, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
-    if ((MAP_FAILED == title_map) || (title_map != TITLE_BASE_ADDR))
+    // Reset terminal -- fork so the child inherits euid and tput runs elevated,
+    // allowing terminfo's reset_file to be opened with full privileges.
+    pid = fork();
+    if (0 > pid)
     {
-        fprintf(stderr, "swear_machine: mmap failed: %d\n", errno);
+        fprintf(stderr, "Forking failed\n");
         goto cleanup;
     }
-
-    // Write the title at the mapped address
-    strcpy((char*)TITLE_BASE_ADDR, TITLE);
-
-    // Seed random number generator
+    if (0 == pid)
+    {
+        execv("/usr/bin/tput", reset_args);
+        fprintf(stderr, "Terminal reset failed\n");
+        goto cleanup;
+    }
+    (void)waitpid(pid, NULL, 0);
+    
+    // Seed RNG
     srand((unsigned int)time(NULL));
 
-    // Initialize ncurses
-    initscr();
-    cbreak();
-    noecho();
-    keypad(stdscr, TRUE);
-    curs_set(0);
-
-    // Present the title
-    plab_cap = tigetstr("plab_norm");
-    if ((NULL != plab_cap) && ((char*)-1 != plab_cap))
-    {
-        plab_out = tparm(plab_cap, 1, (long)(uintptr_t)TITLE_BASE_ADDR);
-        if (NULL != plab_out)
-        {
-            putp(plab_out);
-        }
-    }
-
-    // Draw instructions on the background
-    mvprintw(0, 0, "Press ENTER for a new swear. Press ESC to quit.");
-    refresh();
+    // Enter raw mode, hide cursor, clear screen, draw instructions
+    term_raw(&saved_term);
+    printf("\033[?25l\033[2J\033[H");
+    printf("\033[1;1HPress ENTER for a new swear. Press ESC to quit.");
+    fflush(stdout);
 
     // Main event loop
-    while (true)
+    for (;;)
     {
-        // Get next keypress
-        ch = getch();
+        if (1 != read(STDIN_FILENO, &ch, 1))
+        {
+            break;
+        }
 
-        // Handle ESC - exit
+        // ESC - exit
         if (27 == ch)
         {
             break;
         }
 
-        // Handle ENTER - draw a new swear window
-        if (('\n' == ch) || (KEY_ENTER == ch))
+        // ENTER - draw a new swear window
+        if (('\n' == ch) || ('\r' == ch))
         {
             if (window_count >= MAX_WINDOWS)
             {
                 break;
             }
-
-            // Choose the swear
-            swear = swear_choice(&should_free);
-
-            // Draw window
-            windows[window_count] = draw_swear_window(swear);
-            if (NULL != windows[window_count])
+            term_size(&rows, &cols);
+            if ((rows > SWEAR_WIN_HEIGHT + 2) && (cols > SWEAR_WIN_WIDTH))
             {
+                start_row = 2 + rand() % (rows - SWEAR_WIN_HEIGHT - 1);
+                start_col = 1 + rand() % (cols - SWEAR_WIN_WIDTH);
+                draw_swear_window(g_swears[rand() % SWEAR_COUNT], start_row, start_col);
                 window_count++;
-            }
-
-            // Free
-            if (should_free)
-            {
-                free(swear);
             }
         }
     }
+
+    // Restore terminal
+    term_restore(&saved_term);
+    printf("\033[?25h\033[2J\033[H");
+    fflush(stdout);
 
     // Success
     ok = true;
 
 cleanup:
 
-    // Free ncurses windows
-    for (counter = 0; counter < (size_t)window_count; counter++)
-    {
-        if (NULL != windows[counter])
-        {
-            delwin(windows[counter]);
-            windows[counter] = NULL;
-        }
-    }
-
-    // Shut down ncurses
-    endwin();
-
-    // Unmap title region
-    if (MAP_FAILED != title_map)
-    {
-        munmap(title_map, TITLE_MAP_LEN);
-        title_map = MAP_FAILED;
-    }
-
-    // Indicate result
-    return ok ? 0 : 1;
+    // Finish
+    return ok ? 0 : -1;
 }

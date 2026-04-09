@@ -10,7 +10,7 @@ if [[ $(id -u) != 0 ]]; then
 fi
 
 # Compile main challenge file
-gcc -o ./swear_machine ./swear_machine.c -lncurses
+gcc -o ./swear_machine ./swear_machine.c
 if [[ $? != 0 ]]; then
     echo Compilation error: swear_machine
     exit 1
