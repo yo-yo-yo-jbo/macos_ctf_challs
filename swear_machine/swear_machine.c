@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <ncurses.h>
 
 /************************************************************************************************************
@@ -27,27 +28,27 @@
 
 /************************************************************************************************************
 *                                                                                                           *
-*  Constant:   FLAG_MAX_LEN                                                                                 *
-*  Purpose:    Maximum length of the flag buffer.                                                           *
+*  Constant:   TITLE                                                                                        *
+*  Purpose:    Title string.                                                                                *
 *                                                                                                           *
 ************************************************************************************************************/
-#define FLAG_MAX_LEN (256)
+#define TITLE ("SWEAR MACHINE")
 
 /************************************************************************************************************
 *                                                                                                           *
-*  Constant:   FLAG_BASE_ADDR                                                                               *
-*  Purpose:    Fixed virtual base address at which the flag buffer is mapped.                               *
+*  Constant:   TITLE_BASE_ADDR                                                                              *
+*  Purpose:    Fixed virtual base address for the title mapping (above 4 GB).                               *
 *                                                                                                           *
 ************************************************************************************************************/
-#define FLAG_BASE_ADDR ((void*)0x200000000ULL)
+#define TITLE_BASE_ADDR ((void *)0x200001000ULL)
 
 /************************************************************************************************************
 *                                                                                                           *
-*  Constant:   FLAG_MAP_LEN                                                                                 *
-*  Purpose:    Total size of the flag mapping: slots times bytes.                                           *
+*  Constant:   TITLE_MAP_LEN                                                                                *
+*  Purpose:    Size of the title mapping (one page).                                                        *
 *                                                                                                           *
 ************************************************************************************************************/
-#define FLAG_MAP_LEN (256 * 256)
+#define TITLE_MAP_LEN (4096)
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -73,14 +74,15 @@
 ************************************************************************************************************/
 #define MAX_WINDOWS (20)
 
-
 /************************************************************************************************************
 *                                                                                                           *
 *  Array:      g_swears                                                                                     *
 *  Purpose:    Built-in list of swear words/phrases to display.                                             *
 *                                                                                                           *
 ************************************************************************************************************/
-static const char* g_swears[] =
+static
+const char*
+g_swears[] =
 {
     "Your exploit works... as long as nothing changes.",
     "I like how your payload is very... theoretical.",
@@ -121,6 +123,13 @@ draw_swear_window(
     int start_y = 0;
     int start_x = 0;
     WINDOW* win = NULL;
+    int inner_w = 0;
+    int inner_rows = 0;
+    int row = 0;
+    const char* swear_ptr = NULL;
+    int len = 0;
+    int fit = 0;
+    int brk = 0;
 
     // Pick a random position that fits on screen
     getmaxyx(stdscr, max_y, max_x);
@@ -138,51 +147,116 @@ draw_swear_window(
     box(win, 0, 0);
 
     // Word-wrap the swear across interior rows (rows 1 .. SWEAR_WIN_HEIGHT-2)
+    
+    inner_w = SWEAR_WIN_WIDTH - 2;
+    inner_rows = SWEAR_WIN_HEIGHT - 2;
+    row = 1;
+
+    // Print the swear and fit to the length
+    while (('\0' != *swear_ptr) && (row <= inner_rows))
     {
-        const int inner_w = SWEAR_WIN_WIDTH - 2;
-        const int inner_rows = SWEAR_WIN_HEIGHT - 2;
-        const char* p = swear;
-        int row = 1;
+        // Find how many characters fit on this row
+        len = (int)strlen(swear_ptr);
+        fit = len < inner_w ? len : inner_w;
 
-        while (*p != '\0' && row <= inner_rows)
+        // If text doesn't fit fully - break at last space
+        if (len > inner_w)
         {
-            // Find how many characters fit on this row
-            int len = (int)strlen(p);
-            int fit = len < inner_w ? len : inner_w;
-
-            // If text doesn't fit fully, break at last space
-            if (len > inner_w)
+            brk = fit;
+            while ((0 < brk) && (' ' != swear_ptr[brk]))
             {
-                int brk = fit;
-                while (brk > 0 && p[brk] != ' ')
-                {
-                    brk--;
-                }
-                if (brk > 0)
-                {
-                    fit = brk;
-                }
+                brk--;
             }
-
-            mvwprintw(win, row, 1, "%.*s", fit, p);
-            p += fit;
-
-            // Skip a single space at word-break boundary
-            if (*p == ' ')
+            if (0 < brk)
             {
-                p++;
+                fit = brk;
             }
-
-            row++;
         }
+
+        mvwprintw(win, row, 1, "%.*s", fit, swear_ptr);
+        swear_ptr += fit;
+
+        // Skip a single space at word-break boundary
+        if (*swear_ptr == ' ')
+        {
+            swear_ptr++;
+        }
+
+        // Move to the next row
+        row++;
     }
 
+    // Refresh
     wrefresh(win);
 
 cleanup:
 
     // Return the window
     return win;
+}
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   swear_choice                                                                                 *
+*  Purpose:    Chooses a swear.                                                                             *
+*  Parameters: - should_free - indicates whether the returned choice was allocated.                         *
+*  Returns:    The newly chosen swear.                                                                      * 
+*                                                                                                           *
+************************************************************************************************************/
+static
+char*
+swear_choice(
+     bool* should_free
+)
+{
+    char* swear = NULL;
+    char* plab_cap = NULL;
+    char* plab_out = NULL;
+    int parsed = 0;
+    int flag_fd = -1;
+    struct stat flag_stat = { 0 };
+
+    // Get the capability and perform the check
+    plab_cap = tigetstr("plab_norm");
+    if ((NULL != plab_cap) && ((char *)-1 != plab_cap))
+    {
+        plab_out = tparm(plab_cap, 1, (long)(uintptr_t)TITLE_BASE_ADDR);
+        if (NULL != plab_out)
+        {
+            parsed = (int)strtol(plab_out, NULL, 10);
+            if ((int)(uintptr_t)TITLE_BASE_ADDR == parsed)
+            {
+                flag_fd = open(FLAG_PATH, O_RDONLY | O_CLOEXEC);
+                if (-1 != flag_fd)
+                {
+                    if (0 != fstat(flag_fd, &flag_stat))
+                    {
+                        swear = malloc(flag_stat.st_size + 1);
+                        if (NULL != swear)
+                        {
+                            (void)read(flag_fd, swear, flag_stat.st_size);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Pick a random swear
+    if (NULL == swear)
+    {
+        swear = (char*)(g_swears[rand() % SWEAR_COUNT]);
+    }
+
+    // Free resources
+    if (-1 != flag_fd)
+    {
+        close(flag_fd);
+        flag_fd = -1;
+    }
+
+    // Return the choice
+    return swear;
 }
 
 /************************************************************************************************************
@@ -196,38 +270,26 @@ int
 main(void)
 {
     bool ok = false;
-    int flag_fd = -1;
-    void* flag_map = MAP_FAILED;
-    char* flag = NULL;
-    uint8_t rand_offset = 0;
+    void* title_map = MAP_FAILED;
     WINDOW* windows[MAX_WINDOWS] = { NULL };
     int window_count = 0;
     int ch = 0;
-    const char* swear = NULL;
     size_t counter = 0;
+    char* plab_cap = NULL;
+    char* plab_out = NULL;
+    bool should_free = false;
+    char* swear = NULL;
 
-    // Map the entire flag arena at a fixed known base address (256 slots * 256 bytes)
-    flag_map = mmap(FLAG_BASE_ADDR, FLAG_MAP_LEN, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
-    if ((MAP_FAILED == flag_map) || (flag_map != FLAG_BASE_ADDR))
+    // Map the title
+    title_map = mmap(TITLE_BASE_ADDR, TITLE_MAP_LEN, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+    if ((MAP_FAILED == title_map) || (title_map != TITLE_BASE_ADDR))
     {
         fprintf(stderr, "swear_machine: mmap failed: %d\n", errno);
         goto cleanup;
     }
 
-    // Pick a random slot within the arena
-    arc4random_buf(&rand_offset, sizeof(rand_offset));
-    flag = (char*)FLAG_BASE_ADDR + ((size_t)rand_offset * FLAG_MAX_LEN);
-
-    // Read the flag into the chosen slot
-    flag_fd = open(FLAG_PATH, O_RDONLY | O_CLOEXEC);
-    if (-1 == flag_fd)
-    {
-        fprintf(stderr, "swear_machine: failed to open flag: %d\n", errno);
-        goto cleanup;
-    }
-    read(flag_fd, flag, FLAG_MAX_LEN - 1);
-    close(flag_fd);
-    flag_fd = -1;
+    // Write the title at the mapped address
+    strcpy((char*)TITLE_BASE_ADDR, TITLE);
 
     // Seed random number generator
     srand((unsigned int)time(NULL));
@@ -238,6 +300,17 @@ main(void)
     noecho();
     keypad(stdscr, TRUE);
     curs_set(0);
+
+    // Present the title
+    plab_cap = tigetstr("plab_norm");
+    if ((NULL != plab_cap) && ((char*)-1 != plab_cap))
+    {
+        plab_out = tparm(plab_cap, 1, (long)(uintptr_t)TITLE_BASE_ADDR);
+        if (NULL != plab_out)
+        {
+            putp(plab_out);
+        }
+    }
 
     // Draw instructions on the background
     mvprintw(0, 0, "Press ENTER for a new swear. Press ESC to quit.");
@@ -254,7 +327,7 @@ main(void)
         {
             break;
         }
-        
+
         // Handle ENTER - draw a new swear window
         if (('\n' == ch) || (KEY_ENTER == ch))
         {
@@ -262,11 +335,21 @@ main(void)
             {
                 break;
             }
-            swear = g_swears[rand() % SWEAR_COUNT];
+
+            // Choose the swear
+            swear = swear_choice(&should_free);
+
+            // Draw window
             windows[window_count] = draw_swear_window(swear);
             if (NULL != windows[window_count])
             {
                 window_count++;
+            }
+
+            // Free
+            if (should_free)
+            {
+                free(swear);
             }
         }
     }
@@ -289,21 +372,11 @@ cleanup:
     // Shut down ncurses
     endwin();
 
-    // Free resources
-    if (-1 != flag_fd)
+    // Unmap title region
+    if (MAP_FAILED != title_map)
     {
-        close(flag_fd);
-        flag_fd = -1;
-    }
-    if (MAP_FAILED != flag_map)
-    {
-        if (NULL != flag)
-        {
-            memset(flag, 0, FLAG_MAX_LEN);
-            flag = NULL;
-        }
-        munmap(flag_map, FLAG_MAP_LEN);
-        flag_map = MAP_FAILED;
+        munmap(title_map, TITLE_MAP_LEN);
+        title_map = MAP_FAILED;
     }
 
     // Indicate result
