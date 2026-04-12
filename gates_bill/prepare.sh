@@ -13,7 +13,7 @@ fi
 brew install libarchive 2>/dev/null
 
 # Compile main challenge file
-gcc -o ./gates_bill ./gates_bill.c -I/opt/homebrew/opt/libarchive/include -larchive
+gcc -o ./gates_bill ./gates_bill.c -I/opt/homebrew/opt/libarchive/include -larchive -framework CoreFoundation
 if [[ $? != 0 ]]; then
     echo Compilation error: gates_bill
     exit 1

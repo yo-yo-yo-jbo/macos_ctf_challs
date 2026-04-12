@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/xattr.h>
+#include <CoreFoundation/CoreFoundation.h>
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -38,14 +39,6 @@
 *                                                                                                           *
 ************************************************************************************************************/
 #define MAX_DEPTH (64)
-
-/************************************************************************************************************
-*                                                                                                           *
-*  Constant:   SLEEP_TIME_SECONDS                                                                           *
-*  Purpose:    Sleep time in seconds.                                                                       *
-*                                                                                                           *
-************************************************************************************************************/
-#define SLEEP_TIME_SECONDS (10)
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -82,10 +75,10 @@
 /************************************************************************************************************
 *                                                                                                           *
 *  Constant:   IMAGE_PATH                                                                                   *
-*  Purpose:    Full path of the sparse disk image file created by hdiutil.                                  *
+*  Purpose:    Full path of the disk image file created by hdiutil.                                         *
 *                                                                                                           *
 ************************************************************************************************************/
-#define IMAGE_PATH ("/private/var/gates_bill.sparseimage")
+#define IMAGE_PATH ("/private/var/gates_bill.image")
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -97,16 +90,16 @@
 
 /************************************************************************************************************
 *                                                                                                           *
-*  Constant:   APP_PATH                                                                                     *
-*  Purpose:    Path to the FlagReader application bundle on the mounted volume.                             *
+*  Constant:   ENTRY_PATH                                                                                   *
+*  Purpose:    Path to the entry executable.                                                                *
 *                                                                                                           *
 ************************************************************************************************************/
-#define APP_PATH ("/Users/ctf/mnt/FlagReader.app")
+#define ENTRY_PATH ("/Users/ctf/mnt/entry")
 
 /************************************************************************************************************
 *                                                                                                           *
 *  Constant:   IMAGE_SIZE                                                                                   *
-*  Purpose:    Absolute quota / maximum size of the sparse disk image.                                      *
+*  Purpose:    Absolute quota / maximum size of the disk image.                                             *
 *                                                                                                           *
 ************************************************************************************************************/
 #define IMAGE_SIZE ("1g")
@@ -130,10 +123,10 @@
 /************************************************************************************************************
 *                                                                                                           *
 *  Constant:   QUARANTINE_FLAGS                                                                             *
-*  Purpose:    Quarantine flags: download agent (0x01) | hard quarantine (0x40).                            *
+*  Purpose:    Quarantine flags: download agent (0x01) | hard quarantine (0x04).                            *
 *                                                                                                           *
 ************************************************************************************************************/
-#define QUARANTINE_FLAGS ("0041")
+#define QUARANTINE_FLAGS ("0005")
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -150,6 +143,70 @@
 *                                                                                                           *
 ************************************************************************************************************/
 #define CF_EPOCH_OFFSET (978307200)
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   check_qtn                                                                                    *
+*  Purpose:    Checks the quarantine status of the given path.                                              *
+*  Parameters: - path - the path to check.                                                                  *
+*              - is_qtn - indicates whether the file is quarantined.                                        *
+*  Returns:    True upon success, false otherwise.                                                          *
+*                                                                                                           *
+************************************************************************************************************/
+static
+bool
+check_qtn(
+    char* path,
+    bool* is_qtn
+)
+{
+    bool ok = false;
+    CFStringRef path_cf = NULL;
+    CFURLRef url_cf = NULL;
+    CFDictionaryRef qtn_cf = NULL;
+    Boolean res = false;
+
+    // Build the URL representing the path
+    path_cf = CFStringCreateWithCString(NULL, path, kCFStringEncodingUTF8);
+    if (NULL == path_cf)
+    {
+        goto cleanup;
+    }
+    url_cf = CFURLCreateWithFileSystemPath(NULL, path_cf, kCFURLPOSIXPathStyle, false);
+    if (NULL == url_cf)
+    {
+        goto cleanup;
+    }
+
+    // Get the quarantine property
+    res = CFURLCopyResourcePropertyForKey(url_cf, kCFURLQuarantinePropertiesKey, &qtn_cf, NULL);
+
+    // Success
+    *is_qtn = ((!res) || (NULL == qtn_cf));
+    ok = true;
+
+cleanup:
+
+    // Free resources
+    if (NULL != path_cf)
+    {
+        CFRelease(path_cf);
+        path_cf = NULL;
+    }
+    if (NULL != url_cf)
+    {
+        CFRelease(url_cf);
+        url_cf = NULL;
+    }
+    if (NULL != qtn_cf)
+    {
+        CFRelease(qtn_cf);
+        qtn_cf = NULL;
+    }
+
+    // Indicate result
+    return ok;
+}
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -295,7 +352,7 @@ apply_quarantine_xattr(
         uuid[2] & 0xFFFF,
         uuid[3]);
 
-    // Apply the attribute without following symlinks
+    // Apply the attribute
     (void)setxattr(path, QUARANTINE_XATTR, value, strlen(value), 0, XATTR_NOFOLLOW);
 }
 
@@ -343,10 +400,10 @@ remove_entry(
 *                                                                                                           *
 *  Function:   quarantine_entry                                                                             *
 *  Purpose:    An nftw(3) callback that applies the quarantine extended attribute to a single entry.        *
-*  Parameters: - path     - entry path.                                                                     *
-*              - sb       - stat buffer (unused).                                                           *
+*  Parameters: - path - entry path.                                                                         *
+*              - sb - stat buffer (unused).                                                                 *
 *              - typeflag - entry type flag (unused).                                                       *
-*              - ftwbuf   - walk buffer (unused).                                                           *
+*              - ftwbuf - walk buffer (unused).                                                             *
 *  Returns:    Always 0 to continue the walk.                                                               *
 *                                                                                                           *
 ************************************************************************************************************/
@@ -437,7 +494,7 @@ cleanup:
 /************************************************************************************************************
 *                                                                                                           *
 *  Function:   create_and_mount_volume                                                                      *
-*  Purpose:    Creates a sparse APFS disk image and mounts it at MOUNT_POINT.                               *
+*  Purpose:    Creates an APFS disk image and mounts it at MOUNT_POINT.                                     *
 *  Returns:    True upon success, false otherwise.                                                          *
 *                                                                                                           *
 ************************************************************************************************************/
@@ -453,7 +510,7 @@ create_and_mount_volume(void)
         "-size",
         IMAGE_SIZE,
         "-type",
-        "SPARSE",
+        "UDIF",
         "-fs",
         "APFS",
         "-volname",
@@ -481,7 +538,7 @@ create_and_mount_volume(void)
         }
     }
 
-    // Create a sparse APFS disk image capped at IMAGE_SIZE
+    // Create an APFS disk image capped at IMAGE_SIZE
     if (!run_command(create_args))
     {
         goto cleanup;
@@ -531,7 +588,7 @@ extract_archive(
 
     // Prepare disk writer
     ext = archive_write_disk_new();
-    archive_write_disk_set_options(ext, ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS | ARCHIVE_EXTRACT_SECURE_SYMLINKS);
+    archive_write_disk_set_options(ext, ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_SECURE_SYMLINKS);
     archive_write_disk_set_standard_lookup(ext);
 
     // Open archive for reading
@@ -626,7 +683,7 @@ cleanup:
 /************************************************************************************************************
 *                                                                                                           *
 *  Function:   unmount_and_destroy_volume                                                                   *
-*  Purpose:    Force-detaches the mounted volume and removes the backing sparse disk image.                 *
+*  Purpose:    Force-detaches the mounted volume and removes the backing disk image.                        *
 *  Returns:    True upon success, false otherwise.                                                          *
 *                                                                                                           *
 ************************************************************************************************************/
@@ -650,10 +707,60 @@ unmount_and_destroy_volume(void)
         goto cleanup;
     }
 
-    // Remove the backing sparse image
+    // Remove the backing image
     if (0 != unlink(IMAGE_PATH))
     {
         fprintf(stderr, "gates_bill: unlink failed\n");
+        goto cleanup;
+    }
+
+    // Success
+    ok = true;
+
+cleanup:
+
+    // Indicate result
+    return ok;
+}
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   run_entry                                                                                    *
+*  Purpose:    Attempts to run the extracted entry - if it exists and not quarantined.                      *
+*  Returns:    True upon success, false otherwise.                                                          *
+*                                                                                                           *
+************************************************************************************************************/
+static
+bool
+run_entry(void)
+{
+    bool ok = false;
+    bool is_qtn = false;
+    char* const entry_args[] = { ENTRY_PATH, NULL };
+
+    // Check the quarantine state
+    if (!check_qtn(ENTRY_PATH, &is_qtn))
+    {
+        goto cleanup;
+    }
+
+    // Avoid if quarnatined
+    if (is_qtn)
+    {
+        fprintf(stderr, "gates_bill: you shall not pass\n");
+        goto cleanup;
+    }
+
+    // Make executable
+    if (0 != chmod(ENTRY_PATH, S_IRWXU))
+    {
+        fprintf(stderr, "gates_bill: unlink failed\n");
+        goto cleanup;
+    }
+
+    // Run the entrypoint
+    if (!run_command(entry_args))
+    {
         goto cleanup;
     }
 
@@ -684,12 +791,6 @@ main(
     bool ok = false;
     bool volume_created = false;
     int lock_fd = -1;
-    char* const open_args[] = {
-        "/usr/bin/open",
-        APP_PATH,
-        NULL
-    };
-
 
     // Validate commandline arguments
     if (2 != argc)
@@ -704,7 +805,7 @@ main(
         goto cleanup;
     }
 
-    // Create and mount the 4 GB volume
+    // Create and mount the volume
     if (!create_and_mount_volume())
     {
         goto cleanup;
@@ -720,14 +821,11 @@ main(
     // Stamp every extracted entry with Gatekeeper quarantine metadata
     quarantine_volume_contents();
 
-    // Launch FlagReader.app
-    if (!run_command(open_args))
+    // Launch the entry
+    if (!run_entry())
     {
         goto cleanup;
     }
-
-    // Allow FlagReader.app time to run
-    sleep(SLEEP_TIME_SECONDS);
 
     // Success
     ok = true;
@@ -738,7 +836,7 @@ cleanup:
     if (volume_created)
     {
         nftw(MOUNT_POINT, remove_entry, MAX_DEPTH, FTW_DEPTH | FTW_PHYS);
-        unmount_and_destroy_volume();
+        (void)unmount_and_destroy_volume();
         volume_created = false;
     }
 
