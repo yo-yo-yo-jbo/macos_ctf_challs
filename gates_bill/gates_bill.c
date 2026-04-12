@@ -78,7 +78,7 @@
 *  Purpose:    Full path of the disk image file created by hdiutil.                                         *
 *                                                                                                           *
 ************************************************************************************************************/
-#define IMAGE_PATH ("/private/var/gates_bill.image")
+#define IMAGE_PATH ("/private/var/gates_bill.sparseimage")
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -182,7 +182,7 @@ check_qtn(
     res = CFURLCopyResourcePropertyForKey(url_cf, kCFURLQuarantinePropertiesKey, &qtn_cf, NULL);
 
     // Success
-    *is_qtn = ((!res) || (NULL == qtn_cf));
+    *is_qtn = (res && (NULL != qtn_cf));
     ok = true;
 
 cleanup:
@@ -510,7 +510,7 @@ create_and_mount_volume(void)
         "-size",
         IMAGE_SIZE,
         "-type",
-        "UDIF",
+        "SPARSE",
         "-fs",
         "APFS",
         "-volname",
