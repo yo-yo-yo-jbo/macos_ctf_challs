@@ -22,7 +22,13 @@ rm -f /Users/ctf/flag 2>/dev/null
 mkdir /Users/ctf 2>/dev/null
 cp ./appender /Users/ctf/
 echo "$FLAG" > /Users/ctf/flag
-echo "https://jonathanbaror.com" > /Users/ctf/marker
+rm -rf /private/var/tmp/marker
+mkdir -p /private/var/tmp/marker
+if [[ $? != 0 ]]; then
+    echo Error setting sticky: marker directory
+    exit 1
+fi
+touch /private/var/tmp/marker/marker
 rm -f ./appender
 chown root:wheel /Users/ctf/appender
 if [[ $? != 0 ]]; then
@@ -44,14 +50,10 @@ if [[ $? != 0 ]]; then
     echo Error setting read only: flag
     exit 1
 fi
-chown root:wheel /Users/ctf/marker
-if [[ $? != 0 ]]; then
-    echo Error setting owner: marker
-    exit 1
-fi
-chmod 0600 /Users/ctf/marker
-if [[ $? != 0 ]]; then
-    echo Error setting only root readable: marker
-    exit 1
-fi
 
+# Run appender one time
+echo "https://jonathanbaror.com" | /Users/ctf/appender
+if [[ $? != 0 ]]; then
+    echo Error running appender
+    exit 1
+fi

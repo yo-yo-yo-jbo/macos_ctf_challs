@@ -11,6 +11,9 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <sys/xattr.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -26,7 +29,7 @@
 *  Purpose:    Path to the marker file.                                                                     *
 *                                                                                                           *
 ************************************************************************************************************/
-#define MARKER_PATH ("/Users/ctf/marker")
+#define MARKER_PATH ("/private/var/tmp/marker/marker")
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -42,22 +45,17 @@
 *  Purpose:    Maximum marker size in bytes.                                                                *
 *                                                                                                           *
 ************************************************************************************************************/
-#define MARKER_MAX_SIZE (1024 * 1024 * 42)
+#define MARKER_MAX_SIZE (100000)
 
 /************************************************************************************************************
 *                                                                                                           *
 *  Function:   main                                                                                         *
 *  Purpose:    Main routine. The appender binary.                                                           *
-*  Parameters: - argc - the number of commandline arguments.                                                *
-*              - argv - the commandline arguments.                                                          *
 *  Returns:    Non-zero in case of failure, zero in case of success.                                        *
 *                                                                                                           *
 ************************************************************************************************************/
 int
-main(
-    int argc,
-    char** argv
-)
+main(void)
 {
     bool ok = false;
     int marker_fd = -1;
@@ -99,32 +97,58 @@ main(
     }
     else
     {
+        // Set the file to be quarantined
+        if (0 != fsetxattr(marker_fd, "com.apple.quarantine", "0083;67fc1a3b;JBO;00000000-0000-0000-0000-000000000000", 54, 0, 0))
+        {
+            fprintf(stderr, "appender: cannot set quarnatine attributes\n");
+            goto cleanup;
+        }
+
+        // Set the file to be readable and executable only
+        if (0 != fchmod(marker_fd, S_IRUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH))
+        {
+            fprintf(stderr, "appender: cannot set file mode\n");
+            goto cleanup;
+        }
+
         // Seek to the end of the marker file
-        offset = lseek(marker_fd, SEEK_END, 0);
+        offset = lseek(marker_fd, 0, SEEK_END);
         if (-1 == offset)
         {
             fprintf(stderr, "appender: cannot seek to the end of the file\n");
             goto cleanup;
-        } 
-
-        // Check argument
-        if (2 > argc)
-        {
-            fprintf(stderr, "appender: insufficient arguments\n");
-            goto cleanup;
         }
-        len = strlen(argv[1]);
-        if ((MARKER_MAX_SIZE < len) || (MARKER_MAX_SIZE < offset + len))
+
+        // Read from standard input and append to the marker file
+        len = offset;
+        for (;;)
+        {
+            bytes_done = read(STDIN_FILENO, buf, sizeof(buf));
+            if (0 > bytes_done)
+            {
+                fprintf(stderr, "appender: cannot read from stdin\n");
+                goto cleanup;
+            }
+            if (0 == bytes_done)
+            {
+                break;
+            }
+            if (write(marker_fd, buf, bytes_done) != bytes_done)
+            {
+                fprintf(stderr, "appender: cannot write to marker file\n");
+                goto cleanup;
+            }
+            len += (size_t)bytes_done;
+        }
+
+        // Check for maximum size
+        if (MARKER_MAX_SIZE < len)
         {
             fprintf(stderr, "appender: marker file is too big - resetting it\n");
-            (void)lseek(marker_fd, SEEK_SET, 0);
-            (void)write(marker_fd, "Womp-womp", 9);
-            (void)ftruncate(marker_fd, 9);            
+            (void)lseek(marker_fd, 0, SEEK_SET);
+            (void)ftruncate(marker_fd, 0);            
             goto cleanup;
         }
-
-        // Append to the file
-        (void)write(marker_fd, argv[1], len);
     }
  
     // Success
