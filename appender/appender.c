@@ -273,7 +273,6 @@ run_marker(
 
     // Compare output to expected path
     *run_failed = (0 != strcmp(output, MARKER_PATH));
-    printf("OUTPUT: %s\n", output);
 
     // Success
     ok = true;
