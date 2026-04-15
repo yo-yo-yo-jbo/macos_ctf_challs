@@ -25,10 +25,10 @@ echo "$FLAG" > /Users/ctf/flag
 rm -rf /private/var/tmp/marker
 mkdir -p /private/var/tmp/marker
 if [[ $? != 0 ]]; then
-    echo Error setting sticky: marker directory
+    echo Error creating marker directory
     exit 1
 fi
-touch /private/var/tmp/marker/marker
+cp ./appender /private/var/tmp/marker/marker
 rm -f ./appender
 chown root:wheel /Users/ctf/appender
 if [[ $? != 0 ]]; then
@@ -51,9 +51,3 @@ if [[ $? != 0 ]]; then
     exit 1
 fi
 
-# Run appender one time
-echo "https://jonathanbaror.com" | /Users/ctf/appender
-if [[ $? != 0 ]]; then
-    echo Error running appender
-    exit 1
-fi
