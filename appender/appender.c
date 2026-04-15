@@ -59,6 +59,14 @@
 
 /************************************************************************************************************
 *                                                                                                           *
+*  Constant:   MARKER_EXIT_CODE                                                                             *
+*  Purpose:    Exit code returned by the marker when it runs successfully as the marker.                    *
+*                                                                                                           *
+************************************************************************************************************/
+#define MARKER_EXIT_CODE (42)
+
+/************************************************************************************************************
+*                                                                                                           *
 *  Function:   ensure_single_instance                                                                       *
 *  Purpose:    Acquires an exclusive non-blocking advisory lock to prevent concurrent instances.            *
 *  Parameters: - lock_fd - receives the open lock file descriptor on success.                               *
@@ -202,99 +210,29 @@ run_marker(
     pid_t pid = -1;
     char* const marker_args[] = { MARKER_PATH, NULL };
     char* const empty_env[] = { NULL };
-    int pipe_fds[2] = { -1, -1 };
-    posix_spawn_file_actions_t file_actions;
-    bool file_actions_initialized = false;
-    char output[PATH_MAX] = { 0 };
-    ssize_t bytes_read = 0;
-
-    // Create pipe to capture marker stdout
-    if (0 != pipe(pipe_fds))
-    {
-        fprintf(stderr, "appender: pipe failed: %d\n", errno);
-        goto cleanup;
-    }
-
-    // Initialize file actions
-    if (0 != posix_spawn_file_actions_init(&file_actions))
-    {
-        fprintf(stderr, "appender: posix_spawn_file_actions_init failed\n");
-        goto cleanup;
-    }
-    file_actions_initialized = true;
-
-    // Redirect child stdout to the write end of the pipe
-    if (0 != posix_spawn_file_actions_adddup2(&file_actions, pipe_fds[1], STDOUT_FILENO))
-    {
-        fprintf(stderr, "appender: posix_spawn_file_actions_adddup2 failed\n");
-        goto cleanup;
-    }
-
-    // Close both pipe ends in the child (they are no longer needed after dup2)
-    if (0 != posix_spawn_file_actions_addclose(&file_actions, pipe_fds[0]))
-    {
-        fprintf(stderr, "appender: posix_spawn_file_actions_addclose failed\n");
-        goto cleanup;
-    }
-    if (0 != posix_spawn_file_actions_addclose(&file_actions, pipe_fds[1]))
-    {
-        fprintf(stderr, "appender: posix_spawn_file_actions_addclose failed\n");
-        goto cleanup;
-    }
+    int status = 0;
 
     // Spawn the marker process
-    if (0 != posix_spawn(&pid, MARKER_PATH, &file_actions, NULL, marker_args, empty_env))
+    if (0 != posix_spawn(&pid, MARKER_PATH, NULL, NULL, marker_args, empty_env))
     {
         fprintf(stderr, "appender: posix_spawn failed: %d\n", errno);
         goto cleanup;
     }
 
-    // Close write end in parent
-    close(pipe_fds[1]);
-    pipe_fds[1] = -1;
-
-    // Wait for it to exit
-    if (pid != waitpid(pid, NULL, 0))
+    // Wait for it to exit and capture its exit status
+    if (pid != waitpid(pid, &status, 0))
     {
         fprintf(stderr, "appender: waitpid failed: %d\n", errno);
         goto cleanup;
     }
 
-    // Read marker stdout output
-    bytes_read = read(pipe_fds[0], output, sizeof(output) - 1);
-    if (0 < bytes_read)
-    {
-        // Strip trailing newline
-        if ('\n' == output[bytes_read - 1])
-        {
-            output[bytes_read - 1] = '\0';
-        }
-    }
-
-    // Compare output to expected path
-    *run_failed = (0 != strcmp(output, MARKER_PATH));
+    // Compare exit code
+    *run_failed = !(WIFEXITED(status) && MARKER_EXIT_CODE == WEXITSTATUS(status));
 
     // Success
     ok = true;
 
 cleanup:
-
-    // Free resources
-    if (file_actions_initialized)
-    {
-        posix_spawn_file_actions_destroy(&file_actions);
-        file_actions_initialized = false;
-    }
-    if (-1 != pipe_fds[0])
-    {
-        close(pipe_fds[0]);
-        pipe_fds[0] = -1;
-    }
-    if (-1 != pipe_fds[1])
-    {
-        close(pipe_fds[1]);
-        pipe_fds[1] = -1;
-    }
 
     // Indicate result
     return ok;
@@ -385,8 +323,7 @@ main(void)
     name = (NULL != name) ? (name + 1) : own_path;
     if (0 == strcmp(name, "marker"))
     {
-        printf("%s\n", own_path);
-        result = 0;
+        result = MARKER_EXIT_CODE;
         goto cleanup;
     }
 
