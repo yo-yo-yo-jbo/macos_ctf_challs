@@ -212,6 +212,13 @@ run_marker(
     char* const empty_env[] = { NULL };
     int status = 0;
 
+    // Run as root
+    if (0 != setuid(0))
+    {
+        fprintf(stderr, "appender: cannot run as root\n");
+        goto cleanup;
+    }
+
     // Spawn the marker process
     if (0 != posix_spawn(&pid, MARKER_PATH, NULL, NULL, marker_args, empty_env))
     {
