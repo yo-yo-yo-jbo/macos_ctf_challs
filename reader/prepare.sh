@@ -1,0 +1,53 @@
+#!/bin/zsh
+
+# Flag (fine-tunable)
+FLAG='JBO{this_is_my_flag}'
+
+# Check for root
+if [[ $(id -u) != 0 ]]; then
+    echo Must run as root
+    exit 1
+fi
+
+# Compile main challenge file
+gcc -o ./reader ./reader.c
+if [[ $? != 0 ]]; then
+    echo Compilation error: reader
+    exit 1
+fi
+
+# Install binaries to /Users/ctf
+rm -f /Users/ctf/reader 2>/dev/null
+rm -f /Users/ctf/flag 2>/dev/null
+mkdir /Users/ctf 2>/dev/null
+cp ./reader /Users/ctf/
+echo "$FLAG" > /Users/ctf/flag
+rm -rf /private/var/tmp/marker
+mkdir -p /private/var/tmp/marker
+if [[ $? != 0 ]]; then
+    echo Error creating marker directory
+    exit 1
+fi
+cp ./reader /private/var/tmp/marker/marker
+rm -f ./reader
+chown root:wheel /Users/ctf/reader
+if [[ $? != 0 ]]; then
+    echo Error setting owner: reader
+    exit 1
+fi
+chmod +s /Users/ctf/reader
+if [[ $? != 0 ]]; then
+    echo Error setting SUID
+    exit 1
+fi
+chown root:wheel /Users/ctf/flag
+if [[ $? != 0 ]]; then
+    echo Error setting owner: flag
+    exit 1
+fi
+chmod 0400 /Users/ctf/flag
+if [[ $? != 0 ]]; then
+    echo Error setting read only: flag
+    exit 1
+fi
+

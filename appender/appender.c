@@ -234,7 +234,7 @@ run_marker(
     }
 
     // Compare exit code
-    *run_failed = !(WIFEXITED(status) && MARKER_EXIT_CODE == WEXITSTATUS(status));
+    *run_failed = !(WIFEXITED(status) && (MARKER_EXIT_CODE == WEXITSTATUS(status)));
 
     // Success
     ok = true;
@@ -310,7 +310,7 @@ main(void)
     int lock_fd = -1;
     int marker_fd = -1;
     char own_path[PATH_MAX] = { 0 };
-    uint32_t own_path_size = sizeof(own_path);
+    uint32_t own_path_size = 0;
     char buf[BUFFER_SIZE] = { 0 };
     ssize_t bytes_done = 0;
     size_t len = 0;
@@ -319,6 +319,7 @@ main(void)
     bool run_failed = false;
 
     // Figure own path
+    own_path_size = sizeof(own_path);
     if (0 != _NSGetExecutablePath(own_path, &own_path_size))
     {
         fprintf(stderr, "appender: cannot get self-path\n");
