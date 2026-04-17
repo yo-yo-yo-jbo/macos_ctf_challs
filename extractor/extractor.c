@@ -403,7 +403,12 @@ extract_archive(
         }
 
         // Rewrite path to destination directory
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", dest, current);
+        err = snprintf(fullpath, sizeof(fullpath), "%s/%s", dest, current);
+        if ((0 > err) || (sizeof(fullpath) < err))
+        {
+            fprintf(stderr, "extractor: cannot build full path\n");
+            goto cleanup;
+        }
         archive_entry_set_pathname(entry, fullpath);
 
         // Write entry
@@ -596,7 +601,12 @@ main(
     }
 
     // Check if a flag file was extracted and compare it
-    snprintf(flag_path, sizeof(flag_path), "%s/flag", dest);
+    err = snprintf(flag_path, sizeof(flag_path), "%s/flag", dest);
+    if ((0 > err) || (sizeof(flag_path) < err))
+    {
+        fprintf(stderr, "extractor: cannot build extracted flag path\n");
+        goto cleanup;
+    }
     if (0 == access(flag_path, F_OK))
     {
         if (compare_flag(flag_path))
