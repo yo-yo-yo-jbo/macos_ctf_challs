@@ -6,4 +6,5 @@ Personally, I believe it is because those models have very little concept of how
 ## Structure
 All challenges contain a special `prepare.sh` file which sets up the challenge under `/Users/ctf/`.  
 A flag is also placed under `/Users/ctf/flag` which is only root-readable.  
-The goal in all those challenges would be reading the flag.
+The goal in all those challenges would be reading the flag.  
+I have also provided solutions under `./solution` directory for each challenge - note how simple those usually are.
