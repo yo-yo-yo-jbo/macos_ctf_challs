@@ -547,6 +547,7 @@ main(
     const char* base = NULL;
     char dest[MAX_PATH_LEN] = { 0 };
     char flag_path[MAX_PATH_LEN] = { 0 };
+    int err = -1;
 
     // Validate commandline arguments
     if (2 != argc)
@@ -574,7 +575,12 @@ main(
     }
 
     // Build destination path
-    snprintf(dest, sizeof(dest), "%s/%s", EXTRACTOR_TMP_PATH, base);
+    err = snprintf(dest, sizeof(dest), "%s/%s", EXTRACTOR_TMP_PATH, base);
+    if ((0 > err) || (sizeof(dest) < err))
+    {
+        fprintf(stderr, "extractor: cannot build destination path\n");
+        goto cleanup;
+    }
 
     // Create destination directory securely (no symlink follow, owner r/w only)
     if (!create_dest_dir(dest))
