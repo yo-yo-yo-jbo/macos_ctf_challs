@@ -16,6 +16,31 @@
 #include <sys/wait.h>
 #include <mach-o/dyld.h>
 #include <sys/syslimits.h>
+#include <sys/resource.h>
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Global:     g_limits                                                                                     *
+*  Purpose:    The limit types and corresponding values.                                                    *
+*                                                                                                           *
+************************************************************************************************************/
+static
+const
+struct {
+    int resource;
+    uint64_t limit;
+}
+g_limits[] = {
+    { RLIMIT_CORE, RLIM_INFINITY },
+    { RLIMIT_DATA, RLIM_INFINITY },
+    { RLIMIT_FSIZE, RLIM_INFINITY },
+    { RLIMIT_NOFILE, RLIM_INFINITY },
+    { RLIMIT_STACK, 0x3FFC000 },
+    { RLIMIT_CPU, RLIM_INFINITY },
+    { RLIMIT_AS, RLIM_INFINITY },
+    { RLIMIT_NPROC, 4000 },
+    { RLIMIT_MEMLOCK, RLIM_INFINITY },
+};
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -56,6 +81,43 @@
 *                                                                                                           *
 ************************************************************************************************************/
 #define MARKER_EXIT_CODE (42)
+
+/************************************************************************************************************
+*                                                                                                           *
+*  Function:   unlimit                                                                                      *
+*  Purpose:    Makes sure our own processes does not have any resource limits.                              *
+*  Returns:    True upon success, false otherwise.                                                          *
+*                                                                                                           *
+************************************************************************************************************/
+static
+bool
+unlimit(void)
+{
+    bool ok = false;
+    size_t counter = 0;
+    struct rlimit rl = { RLIM_INFINITY, RLIM_INFINITY };
+
+    // Iterate all limits
+    for (counter = 0; counter < sizeof(g_limits) / sizeof(*g_limits); counter++)
+    {
+        // Set the limit
+        rl.rlim_cur = g_limits[counter].limit;
+        rl.rlim_max = g_limits[counter].limit;
+        if (0 != setrlimit(g_limits[counter].resource, &rl))
+        {
+            fprintf(stderr, "reader: could not set limit of type %d\n", g_limits[counter].resource);
+            goto cleanup;
+        }
+    }
+
+    // Success
+    ok = true;
+
+cleanup:
+
+    // Indicate result
+    return ok;
+}
 
 /************************************************************************************************************
 *                                                                                                           *
@@ -234,6 +296,12 @@ main(
     bool run_failed = false;
     int arg_fd = -1;
     uint8_t first_byte = 0;
+
+    // Make sure we don't have limitations
+    if (!unlimit())
+    {
+        goto cleanup;
+    }
 
     // Figure own path
     own_path_size = sizeof(own_path);
