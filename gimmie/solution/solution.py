@@ -203,7 +203,8 @@ def main():
 
     # Show the output
     if proc.stdout:
-        sys.stdout.write(proc.stdout.decode('utf-8', errors='replace'))
+        lines = [ i for i in proc.stdout.decode('utf-8', errors='replace').split('\n') if len(i) > 0 ]
+        print(lines[-1])
 
 if __name__ == '__main__':
     main()

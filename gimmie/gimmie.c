@@ -405,23 +405,19 @@ main(
     printf("gimmie: signed message:\n\n");
     fwrite(message, 1, message_size, stdout);
     printf("\n");
-    fflush(stdout);
 
     // If this is the magic message, release the flag
-    if ((strlen(EXPECTED_MESSAGE) == message_size) &&
-        (0 == memcmp(message, EXPECTED_MESSAGE, message_size)))
+    if ((strlen(EXPECTED_MESSAGE) == message_size) && (0 == memcmp(message, EXPECTED_MESSAGE, message_size)))
     {
         if (!read_file(FLAG_PATH, MAX_FLAG_SIZE, &flag, &flag_size))
         {
             goto cleanup;
         }
-        printf("gimmie: ");
         fwrite(flag, 1, flag_size, stdout);
         if ((0 == flag_size) || ('\n' != flag[flag_size - 1]))
         {
             printf("\n");
         }
-        fflush(stdout);
     }
 
     // Success
