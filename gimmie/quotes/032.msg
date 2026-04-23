@@ -1,0 +1,12 @@
+<MooseOnDaLoose> Hey Mike
+<goatboy> what?
+<MooseOnDaLoose> Pussy.
+<goatboy> er?
+<MooseOnDaLoose> Pussy.
+<goatboy> and?
+<MooseOnDaLoose> Pussy.
+<goatboy> ...
+<MooseOnDaLoose> Pussy.
+<goatboy> i dont get it
+<MooseOnDaLoose> AND YOU NEVER WILL.
+<goatboy> bastard

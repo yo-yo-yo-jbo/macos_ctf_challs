@@ -1,0 +1,6 @@
+<_kr4m3r> so many fucking criminals, its bullshit
+<foniks`> heh, if we sent all the criminals to some empty
+continent and just left them there to die
+<foniks`> and showed up like 50yrs later like, "sup?"
+<foniks`> whatd u think they'd say?
+<FoSZoR[bg]> something along the lines of, "G`Day mate"

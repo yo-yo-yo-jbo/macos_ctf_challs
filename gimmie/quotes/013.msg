@@ -1,0 +1,2 @@
+<Sui88> 67% of girls are stupid
+<V-girl> i belong with the other 13%

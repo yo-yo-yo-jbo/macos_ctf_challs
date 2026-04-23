@@ -1,0 +1,3 @@
+<Night-hen-gayle> I gotta go.  There's a dude next to me and
+he's watching me type, which is sort of starting to creep me
+out.  Yes dude next to me, I mean you.

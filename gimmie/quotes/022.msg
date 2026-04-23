@@ -1,0 +1,4 @@
+<frank> can you help me install GTA3?
+<knightmare> first, shut down all programs you aren't using
+frank has quit IRC. (Quit)
+<knightmare> ...

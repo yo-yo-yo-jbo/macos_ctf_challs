@@ -1,0 +1,3 @@
+<Fulgore> whats the complement to a 43 degree angle?
+<sparks> My you're looking "acute" today
+<Fulgore> fuck you

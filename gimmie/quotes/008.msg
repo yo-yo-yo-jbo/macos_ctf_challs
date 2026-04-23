@@ -1,0 +1,3 @@
+<erno> hm. I've lost a machine.. literally _lost_. it responds
+to ping, it works completely, I just can't figure out where in
+my apartment it is.

@@ -1,0 +1,5 @@
+<Insomniak`> Stupid fucking Google
+<Insomniak`> "The" is a common word, and was not included in
+your search
+<Insomniak`> "Who" is a common word, and was not included in
+your search

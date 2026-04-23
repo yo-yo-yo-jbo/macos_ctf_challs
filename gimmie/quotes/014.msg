@@ -1,0 +1,5 @@
+<ckx> women ask for it
+<ckx> they act all old and mature
+<ckx> and then you stick your cock up their ass
+<ckx> and they get all bitchy
+<ckx> "I"M ONLY 13, I'M ONLY 13!!!"

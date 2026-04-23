@@ -1,0 +1,5 @@
+<DannyB> some girl on the street asked if i was saved yet
+<DannyB> i told her i saved at the checkpoint a couple minutes
+back
+<DannyB> and can reload from there if i die
+<DannyB> she was confused

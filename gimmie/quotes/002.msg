@@ -1,0 +1,4 @@
+<BigBurk> God i really cant stand windows me
+<Felacio> heh i know. i moved to win2k
+* Felacio sucks huge cock
+<Felacio> errr ME, not /me

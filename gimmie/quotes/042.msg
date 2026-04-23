@@ -1,0 +1,3 @@
+<Beeth> Girls are like internet domain names, the ones I like
+are already taken.
+<honx> well, you can stil get one from a strange country :-P

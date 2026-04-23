@@ -1,0 +1,2 @@
+Mike3285: wtf is a palindrome
+MaroonSand: no its not dude

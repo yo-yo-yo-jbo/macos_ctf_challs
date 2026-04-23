@@ -3,7 +3,6 @@
 *  File:       gimmie.c                                                                                     *
 *  Purpose:    The gimmie challenge.                                                                        *
 *  Remarks:    - Created by Jonathan Bar Or ("JBO"), https://jonathanbaror.com                              *
-*              - Link with: -framework Security -framework CoreFoundation                                   *
 *                                                                                                           *
 ************************************************************************************************************/
 #include <errno.h>
@@ -403,7 +402,7 @@ main(
     }
 
     // Print the signed message
-    printf("gimmie: signed message: ");
+    printf("gimmie: signed message:\n\n");
     fwrite(message, 1, message_size, stdout);
     printf("\n");
     fflush(stdout);
