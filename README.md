@@ -8,3 +8,11 @@ All challenges contain a special `prepare.sh` file which sets up the challenge u
 A flag is also placed under `/Users/ctf/flag` which is only root-readable.  
 The goal in all those challenges would be reading the flag.  
 I have also provided solutions under `./solution` directory for each challenge - note how simple those usually are.
+
+## Recommendations
+Play for fun, I advise trying without an LLM first, and then trying with an LLM.  
+You must use a modern macOS box, otherwise things just won't work.  
+
+Stay tuned!
+
+Jonathan Bar Or (https://jonathanbaror.com)
